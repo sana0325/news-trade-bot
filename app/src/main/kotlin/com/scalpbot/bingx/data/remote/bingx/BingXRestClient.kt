@@ -6,6 +6,7 @@ import com.scalpbot.bingx.data.remote.NetworkClientFactory
 import com.scalpbot.bingx.data.remote.bingx.dto.BalanceDto
 import com.scalpbot.bingx.data.remote.bingx.dto.BalanceEnvelopeData
 import com.scalpbot.bingx.data.remote.bingx.dto.BingXEnvelope
+import com.scalpbot.bingx.data.remote.bingx.dto.BookTickerDto
 import com.scalpbot.bingx.data.remote.bingx.dto.CloseAllPositionsData
 import com.scalpbot.bingx.data.remote.bingx.dto.ContractDto
 import com.scalpbot.bingx.data.remote.bingx.dto.KlineDto
@@ -86,6 +87,9 @@ class BingXRestClient(
 
     suspend fun getPremiumIndex(symbol: String): Result<PremiumIndexDto> =
         publicGet<PremiumIndexDto>("/openApi/swap/v2/quote/premiumIndex", mapOf("symbol" to symbol))
+
+    suspend fun getBookTicker(symbol: String): Result<BookTickerDto> =
+        publicGet<BookTickerDto>("/openApi/swap/v2/quote/bookTicker", mapOf("symbol" to symbol))
 
     // ---- Підписані (акаунт) ----
 

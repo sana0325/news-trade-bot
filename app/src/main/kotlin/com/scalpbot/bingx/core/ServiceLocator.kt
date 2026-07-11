@@ -7,6 +7,9 @@ import com.scalpbot.bingx.data.remote.NetworkClientFactory
 import com.scalpbot.bingx.data.remote.bingx.BingXRestClient
 import com.scalpbot.bingx.data.remote.bingx.BingXWebSocketClient
 import com.scalpbot.bingx.data.remote.deepseek.DeepSeekClient
+import com.scalpbot.bingx.domain.engine.RiskManager
+import com.scalpbot.bingx.domain.engine.SingleTradeLock
+import com.scalpbot.bingx.domain.engine.TradingEngine
 
 /**
  * Ручний DI-контейнер. Проєкт одноосібний і не настільки великий, щоб
@@ -22,6 +25,23 @@ class ServiceLocator private constructor(context: Context) {
     val bingXRestClient: BingXRestClient by lazy { BingXRestClient(sharedHttpClient, secureConfigStore) }
     val bingXWebSocketClient: BingXWebSocketClient by lazy { BingXWebSocketClient(sharedHttpClient) }
     val deepSeekClient: DeepSeekClient by lazy { DeepSeekClient(sharedHttpClient, secureConfigStore) }
+
+    val riskManager: RiskManager by lazy { RiskManager(secureConfigStore, database.tradeDao()) }
+
+    /** Один інстанс на процес — FGS і UI (для стану) використовують той самий двигун. */
+    val tradingEngine: TradingEngine by lazy {
+        TradingEngine(
+            bingXRestClient = bingXRestClient,
+            bingXWebSocketClient = bingXWebSocketClient,
+            deepSeekClient = deepSeekClient,
+            secureConfigStore = secureConfigStore,
+            tradeDao = database.tradeDao(),
+            pairDao = database.pairDao(),
+            lessonDao = database.lessonDao(),
+            riskManager = riskManager,
+            singleTradeLock = SingleTradeLock(),
+        )
+    }
 
     companion object {
         @Volatile private var instance: ServiceLocator? = null

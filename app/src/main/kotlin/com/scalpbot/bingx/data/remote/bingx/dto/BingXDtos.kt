@@ -59,6 +59,19 @@ data class KlineDto(
 )
 
 @Serializable
+data class BookTickerDto(
+    val symbol: String,
+    val bidPrice: Double = 0.0,
+    val askPrice: Double = 0.0,
+) {
+    fun spreadPercent(): Double {
+        val mid = (bidPrice + askPrice) / 2.0
+        if (mid <= 0.0) return 0.0
+        return (askPrice - bidPrice) / mid * 100.0
+    }
+}
+
+@Serializable
 data class PremiumIndexDto(
     val symbol: String,
     val markPrice: Double = 0.0,
