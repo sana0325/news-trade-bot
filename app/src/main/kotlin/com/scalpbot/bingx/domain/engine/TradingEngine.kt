@@ -246,7 +246,14 @@ class TradingEngine(
         val pair = pairDao.getEnabled().firstOrNull { it.symbol == symbol } ?: run {
             AppLogger.w(TAG, "$symbol: немає кешованих даних контракту, skip"); return
         }
-        val entryPrice = context.candlesM1.lastOrNull()?.close ?: return
+        // Ціна закриття M1-свічки з context могла застаріти на кілька секунд (збір
+        // контексту + round-trip до DeepSeek + ризик-перевірки) — на волатильній
+        // мікрокап-парі цього досить, щоб SL, порахований від старої ціни, опинився
+        // не на тому боці від актуальної ринкової ("SL Price must be greater/less
+        // than Last Price" від BingX). Тому перед розрахунком SL/TP тягнемо свіжу ціну.
+        val entryPrice = bingXRestClient.getTicker24h(symbol).getOrNull()?.lastPrice?.takeIf { it > 0.0 }
+            ?: context.candlesM1.lastOrNull()?.close
+            ?: return
 
         val quantity = PositionSizer.computeQuantity(
             PositionSizer.Input(
