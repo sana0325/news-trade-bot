@@ -6,6 +6,7 @@ import com.scalpbot.bingx.data.local.prefs.SecureConfigStore
 import com.scalpbot.bingx.data.remote.NetworkClientFactory
 import com.scalpbot.bingx.data.remote.bingx.BingXRestClient
 import com.scalpbot.bingx.data.remote.bingx.BingXWebSocketClient
+import com.scalpbot.bingx.data.remote.deepseek.DeepSeekClient
 
 /**
  * Ручний DI-контейнер. Проєкт одноосібний і не настільки великий, щоб
@@ -20,6 +21,7 @@ class ServiceLocator private constructor(context: Context) {
     private val sharedHttpClient by lazy { NetworkClientFactory.create() }
     val bingXRestClient: BingXRestClient by lazy { BingXRestClient(sharedHttpClient, secureConfigStore) }
     val bingXWebSocketClient: BingXWebSocketClient by lazy { BingXWebSocketClient(sharedHttpClient) }
+    val deepSeekClient: DeepSeekClient by lazy { DeepSeekClient(sharedHttpClient, secureConfigStore) }
 
     companion object {
         @Volatile private var instance: ServiceLocator? = null
