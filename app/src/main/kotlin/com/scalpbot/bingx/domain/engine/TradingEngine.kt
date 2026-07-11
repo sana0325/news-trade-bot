@@ -10,6 +10,7 @@ import com.scalpbot.bingx.data.local.db.entity.TradeEntity
 import com.scalpbot.bingx.data.local.db.entity.TradeStatus
 import com.scalpbot.bingx.data.local.prefs.SecureConfigStore
 import com.scalpbot.bingx.data.remote.NetworkClientFactory
+import com.scalpbot.bingx.data.remote.bingx.BingXApiException
 import com.scalpbot.bingx.data.remote.bingx.BingXRestClient
 import com.scalpbot.bingx.data.remote.bingx.BingXWebSocketClient
 import com.scalpbot.bingx.data.remote.bingx.dto.KlineDto
@@ -312,8 +313,14 @@ class TradingEngine(
             _state.value = _state.value.copy(openPositionSymbol = symbol, openPositionDirection = direction)
             notifier?.onTradeOpened(saved)
             monitorJob = engineScope?.launch { monitorOpenPosition(id) }
-        }.onFailure {
-            AppLogger.e(TAG, "Не вдалось відкрити ордер по $symbol", it)
+        }.onFailure { error ->
+            AppLogger.e(TAG, "Не вдалось відкрити ордер по $symbol", error)
+            if (error is BingXApiException && error.code == 109400 &&
+                error.message?.contains("temporarily disabled", ignoreCase = true) == true
+            ) {
+                pairDao.setEnabled(symbol, false)
+                notifier?.onPairAutoDisabled(symbol, "торгівлю тимчасово заблоковано біржею через волатильність")
+            }
         }
     }
 

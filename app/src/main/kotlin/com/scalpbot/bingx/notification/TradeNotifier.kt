@@ -68,6 +68,14 @@ class TradeNotifier(private val context: Context) : EngineNotifier {
         post(NotificationChannels.SYSTEM, "✅ Зв'язок відновлено", "З'єднання з BingX відновлено.")
     }
 
+    override fun onPairAutoDisabled(symbol: String, reason: String) {
+        post(
+            NotificationChannels.SYSTEM,
+            "⏸ Пару ${baseAsset(symbol)} вимкнено автоматично",
+            "BingX відхилила ордер по $symbol: $reason. Пару вимкнено в Налаштуваннях, бот перейде до інших пар.",
+        )
+    }
+
     fun onReportReady() {
         post(NotificationChannels.SYSTEM, "📊 Готовий дводенний звіт", "Новий розбір результатів бота вже доступний у Журналі.")
     }

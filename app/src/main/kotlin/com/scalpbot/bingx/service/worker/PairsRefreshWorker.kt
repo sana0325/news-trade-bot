@@ -17,6 +17,7 @@ private const val TAG = "PairsRefreshWorker"
 private const val PERIODIC_WORK_NAME = "scalpbot_pairs_refresh"
 private const val ONE_TIME_WORK_NAME = "scalpbot_pairs_refresh_once"
 private const val TOP_PAIRS_COUNT = 25
+private const val MAX_24H_MOVE_PERCENT = 20.0
 
 /**
  * 25 найліквідніших USDT-perp пар за 24h обсягом — тягнеться динамічно при
@@ -56,6 +57,12 @@ class PairsRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
             }
             .mapNotNull { contract ->
                 val ticker = tickers[contract.symbol] ?: return@mapNotNull null
+                // Різкі 24h-стрибки (пампи мікрокапів на кшталт CASHCAT/OWL/ANSEM)
+                // часто мають роздутий разовий обсяг, який тимчасово підкидає їх у
+                // топ за quoteVolume, і саме такі інструменти BingX найчастіше сам
+                // тимчасово блокує для API-ордерів через захист від ліквідацій —
+                // відсіюємо їх зі старту, а не постфактум через помилки ордерів.
+                if (kotlin.math.abs(ticker.priceChangePercent) > MAX_24H_MOVE_PERCENT) return@mapNotNull null
                 contract to ticker
             }
             .sortedByDescending { (_, ticker) -> ticker.quoteVolume }

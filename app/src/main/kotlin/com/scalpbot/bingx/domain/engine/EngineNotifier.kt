@@ -14,4 +14,5 @@ interface EngineNotifier {
     fun onDailyLimitReached()
     fun onConnectionLost(message: String)
     fun onConnectionRestored()
+    fun onPairAutoDisabled(symbol: String, reason: String)
 }
