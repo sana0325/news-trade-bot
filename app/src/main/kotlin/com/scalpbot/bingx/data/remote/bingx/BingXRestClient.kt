@@ -76,7 +76,7 @@ class BingXRestClient(
 
     suspend fun getKlines(symbol: String, interval: String, limit: Int = 100): Result<List<KlineDto>> =
         publicGet<List<KlineDto>>(
-            "/openApi/swap/v3/quote/klines",
+            "/openApi/swap/v2/quote/klines",
             mapOf("symbol" to symbol, "interval" to interval, "limit" to limit.toString()),
         )
 

@@ -76,10 +76,10 @@ class MarketRepository(
         pairDao.setEnabled(symbol, enabled)
     }
 
-    suspend fun getKlinesForChart(symbol: String, interval: String, limit: Int = 100): List<Candle> =
-        bingXRestClient.getKlines(symbol, interval, limit).getOrNull()
-            ?.map { Candle(it.openTimeMs, it.open, it.high, it.low, it.close, it.volume) }
-            .orEmpty()
+    suspend fun getKlinesForChart(symbol: String, interval: String, limit: Int = 100): Result<List<Candle>> =
+        bingXRestClient.getKlines(symbol, interval, limit).map { klines ->
+            klines.map { Candle(it.openTimeMs, it.open, it.high, it.low, it.close, it.volume) }
+        }
 
     private suspend fun seedInitialPrices() {
         val tickers = bingXRestClient.getAllTickers24h().getOrNull().orEmpty()

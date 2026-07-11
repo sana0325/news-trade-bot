@@ -42,7 +42,11 @@ class PairsRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
         val existingEnabled = pairDao.getAll().associate { it.symbol to it.enabled }
 
         val ranked = contracts
-            .filter { it.currency == "USDT" && it.status == 1 }
+            // BingX contracts endpoint also lists non-crypto CFD-style instruments
+            // (gold/silver/index tokens like "NCCOGOLD2USD") that also settle in
+            // USDT but don't follow the "<COIN>-USDT" symbol convention — excluded
+            // explicitly, since currency == "USDT" alone isn't a strict enough filter.
+            .filter { it.currency == "USDT" && it.status == 1 && it.symbol.endsWith("-USDT") }
             .mapNotNull { contract ->
                 val ticker = tickers[contract.symbol] ?: return@mapNotNull null
                 contract to ticker

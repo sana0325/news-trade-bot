@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,7 +33,7 @@ import com.scalpbot.bingx.ui.theme.ProfitGreen
 fun MarketDetailScreen(symbol: String, onBack: () -> Unit, viewModel: MarketDetailViewModel = viewModel()) {
     LaunchedEffect(symbol) { viewModel.load(symbol) }
 
-    val candles by viewModel.candles.collectAsStateWithLifecycle()
+    val chartState by viewModel.chartState.collectAsStateWithLifecycle()
     val trades by viewModel.trades.collectAsStateWithLifecycle()
 
     val markers = trades.flatMap { trade ->
@@ -59,16 +61,34 @@ fun MarketDetailScreen(symbol: String, onBack: () -> Unit, viewModel: MarketDeta
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            if (candles.isEmpty()) {
-                Text(text = "Завантаження графіка…", style = MaterialTheme.typography.bodyMedium)
-            } else {
-                CandlestickChart(
-                    candles = candles,
-                    markers = markers,
-                    bullColor = ProfitGreen,
-                    bearColor = LossRed,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                )
+            when (val state = chartState) {
+                is ChartLoadState.Loading -> {
+                    CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
+                    Text(
+                        text = "Завантаження графіка…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                is ChartLoadState.Error -> {
+                    Text(
+                        text = "Не вдалось завантажити графік: ${state.message}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LossRed,
+                    )
+                    Button(onClick = viewModel::retry, modifier = Modifier.padding(top = 12.dp)) {
+                        Text("Спробувати ще раз")
+                    }
+                }
+                is ChartLoadState.Loaded -> {
+                    CandlestickChart(
+                        candles = state.candles,
+                        markers = markers,
+                        bullColor = ProfitGreen,
+                        bearColor = LossRed,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
             }
         }
     }
