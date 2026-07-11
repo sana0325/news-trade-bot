@@ -34,6 +34,10 @@ class PairsRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
             AppLogger.w(TAG, "Не вдалось оновити список контрактів", it)
             return Result.retry()
         }
+        rest.getAllTickers24hRaw().onSuccess { raw ->
+            AppLogger.d(TAG, "RAW ticker JSON (перші 1500 символів): ${raw.take(1500)}")
+        }
+
         val tickers = rest.getAllTickers24h().getOrElse {
             AppLogger.w(TAG, "Не вдалось оновити 24h тикери", it)
             return Result.retry()

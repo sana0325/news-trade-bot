@@ -90,6 +90,16 @@ class BingXRestClient(
 
     suspend fun getAllTickers24h(): Result<List<Ticker24hDto>> = publicGet("/openApi/swap/v2/quote/ticker")
 
+    /**
+     * Тимчасовий діагностичний метод: сирий JSON тикерів без типізованого
+     * декодування — щоб звірити реальні назви полів BingX (priceChangePercent,
+     * quoteVolume зараз завжди повертають дефолт 0.0, отже наші здогади про
+     * назви полів не збігаються з реальною відповіддю). Видалити після фіксу DTO.
+     */
+    suspend fun getAllTickers24hRaw(): Result<String> = runCatching {
+        httpClient.get("${baseUrl()}/openApi/swap/v2/quote/ticker").bodyAsText()
+    }
+
     suspend fun getTicker24h(symbol: String): Result<Ticker24hDto> =
         publicGet<Ticker24hDto>("/openApi/swap/v2/quote/ticker", mapOf("symbol" to symbol))
 
