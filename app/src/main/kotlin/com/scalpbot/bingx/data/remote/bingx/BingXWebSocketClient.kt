@@ -8,6 +8,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readBytes
+import io.ktor.websocket.readText
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.zip.GZIPInputStream
