@@ -2,6 +2,7 @@ package com.scalpbot.bingx
 
 import android.app.Application
 import com.scalpbot.bingx.core.ServiceLocator
+import com.scalpbot.bingx.notification.NotificationChannels
 
 class ScalpBotApp : Application() {
 
@@ -11,5 +12,6 @@ class ScalpBotApp : Application() {
     override fun onCreate() {
         super.onCreate()
         serviceLocator = ServiceLocator.getInstance(this)
+        NotificationChannels.createAll(this)
     }
 }
