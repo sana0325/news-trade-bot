@@ -65,6 +65,7 @@ class TradingForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         locator = (application as ScalpBotApp).serviceLocator
+        locator.tradingEngine.notifier = locator.tradeNotifier
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         acquireWakeLock()

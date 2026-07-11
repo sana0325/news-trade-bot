@@ -10,6 +10,7 @@ import com.scalpbot.bingx.data.remote.deepseek.DeepSeekClient
 import com.scalpbot.bingx.domain.engine.RiskManager
 import com.scalpbot.bingx.domain.engine.SingleTradeLock
 import com.scalpbot.bingx.domain.engine.TradingEngine
+import com.scalpbot.bingx.notification.TradeNotifier
 
 /**
  * Ручний DI-контейнер. Проєкт одноосібний і не настільки великий, щоб
@@ -27,6 +28,7 @@ class ServiceLocator private constructor(context: Context) {
     val deepSeekClient: DeepSeekClient by lazy { DeepSeekClient(sharedHttpClient, secureConfigStore) }
 
     val riskManager: RiskManager by lazy { RiskManager(secureConfigStore, database.tradeDao()) }
+    val tradeNotifier: TradeNotifier by lazy { TradeNotifier(appContext) }
 
     /** Один інстанс на процес — FGS і UI (для стану) використовують той самий двигун. */
     val tradingEngine: TradingEngine by lazy {
