@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.data.local.db.entity.LessonEntity
 import com.scalpbot.bingx.data.local.db.entity.ReportEntity
 import com.scalpbot.bingx.data.local.db.entity.TradeEntity
 import com.scalpbot.bingx.data.local.db.entity.TradeStatus
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 enum class ResultFilter { ALL, PROFIT, LOSS }
 
@@ -26,6 +28,7 @@ class JournalViewModel(application: Application) : AndroidViewModel(application)
     private val locator = (application as ScalpBotApp).serviceLocator
     private val tradeDao = locator.database.tradeDao()
     private val reportDao = locator.database.reportDao()
+    private val lessonDao = locator.database.lessonDao()
 
     private val _filter = MutableStateFlow(JournalFilterState())
     val filter: StateFlow<JournalFilterState> = _filter
@@ -51,11 +54,18 @@ class JournalViewModel(application: Application) : AndroidViewModel(application)
     val reports: StateFlow<List<ReportEntity>> =
         reportDao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val lessons: StateFlow<List<LessonEntity>> =
+        lessonDao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun setSymbolFilter(symbol: String?) {
         _filter.value = _filter.value.copy(symbol = symbol)
     }
 
     fun setResultFilter(result: ResultFilter) {
         _filter.value = _filter.value.copy(result = result)
+    }
+
+    fun activateLessonVersion(version: Int) {
+        viewModelScope.launch { lessonDao.setActiveVersion(version) }
     }
 }

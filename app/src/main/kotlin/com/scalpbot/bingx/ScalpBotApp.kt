@@ -3,6 +3,7 @@ package com.scalpbot.bingx
 import android.app.Application
 import com.scalpbot.bingx.core.ServiceLocator
 import com.scalpbot.bingx.notification.NotificationChannels
+import com.scalpbot.bingx.service.worker.AnalysisReportWorker
 import com.scalpbot.bingx.service.worker.PairsRefreshWorker
 
 class ScalpBotApp : Application() {
@@ -16,5 +17,6 @@ class ScalpBotApp : Application() {
         NotificationChannels.createAll(this)
         PairsRefreshWorker.runOnce(this)
         PairsRefreshWorker.schedulePeriodic(this)
+        AnalysisReportWorker.schedulePeriodic(this)
     }
 }

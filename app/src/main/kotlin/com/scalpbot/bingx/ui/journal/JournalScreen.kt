@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.scalpbot.bingx.data.local.db.entity.CloseReason
+import com.scalpbot.bingx.data.local.db.entity.LessonEntity
 import com.scalpbot.bingx.data.local.db.entity.ReportEntity
 import com.scalpbot.bingx.data.local.db.entity.TradeDirection
 import com.scalpbot.bingx.data.local.db.entity.TradeEntity
@@ -42,11 +44,13 @@ import com.scalpbot.bingx.ui.theme.ProfitGreen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 @Composable
 fun JournalScreen(viewModel: JournalViewModel = viewModel()) {
     var tabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("Угоди", "Звіти")
+    val tabs = listOf("Угоди", "Звіти", "Уроки")
 
     Scaffold { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -57,7 +61,8 @@ fun JournalScreen(viewModel: JournalViewModel = viewModel()) {
             }
             when (tabIndex) {
                 0 -> TradesTab(viewModel)
-                else -> ReportsTab(viewModel)
+                1 -> ReportsTab(viewModel)
+                else -> LessonsTab(viewModel)
             }
         }
     }
@@ -243,6 +248,45 @@ private fun ReportCard(report: ReportEntity) {
                 maxLines = if (expanded) Int.MAX_VALUE else 3,
                 modifier = Modifier.padding(top = 8.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun LessonsTab(viewModel: JournalViewModel) {
+    val lessons by viewModel.lessons.collectAsStateWithLifecycle()
+
+    if (lessons.isEmpty()) {
+        Text(text = "Уроків поки немає — з'являться після першого дводенного розбору", modifier = Modifier.padding(16.dp))
+        return
+    }
+
+    LazyColumn(contentPadding = PaddingValues(12.dp)) {
+        items(lessons, key = { it.id }) { lesson ->
+            LessonCard(lesson = lesson, onActivate = { viewModel.activateLessonVersion(lesson.version) })
+            Spacer(modifier = Modifier.padding(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun LessonCard(lesson: LessonEntity, onActivate: () -> Unit) {
+    val items = remember(lesson.contentJson) {
+        runCatching { Json.decodeFromString<List<String>>(lesson.contentJson) }.getOrDefault(emptyList())
+    }
+    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Версія ${lesson.version} · ${formatDate(lesson.createdAtEpochMs)}", fontWeight = FontWeight.Bold)
+                if (lesson.isActive) {
+                    Text(text = "Активна", color = ProfitGreen, fontWeight = FontWeight.Bold)
+                } else {
+                    Button(onClick = onActivate) { Text("Активувати") }
+                }
+            }
+            items.forEach { line ->
+                Text(text = "• $line", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            }
         }
     }
 }
