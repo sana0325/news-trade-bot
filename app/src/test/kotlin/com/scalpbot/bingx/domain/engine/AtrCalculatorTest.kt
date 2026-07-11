@@ -50,12 +50,12 @@ class AtrCalculatorTest {
 
     @Test
     fun `shockRatio flags a news-spike candle above threshold`() {
-        val steady = steadyCandles(count = 16).toMutableList()
-        val last = steady.removeLast()
+        val steady = steadyCandles(count = 16)
+        val last = steady.last()
         val spike = last.copy(high = last.close + 20.0, low = last.close - 20.0)
-        steady.add(spike)
+        val candles = steady.dropLast(1) + spike
 
-        val ratio = AtrCalculator.shockRatio(steady)
+        val ratio = AtrCalculator.shockRatio(candles)
         assertTrue("expected shock ratio > ${AtrCalculator.SHOCK_RATIO_THRESHOLD}, was $ratio", ratio!! > AtrCalculator.SHOCK_RATIO_THRESHOLD)
     }
 }
