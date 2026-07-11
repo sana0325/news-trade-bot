@@ -270,6 +270,11 @@ class TradingEngine(
         }
         val side = if (direction == TradeAction.LONG) OrderSide.BUY else OrderSide.SELL
 
+        bingXRestClient.setLeverage(symbol, secureConfigStore.leverage, positionSide).onFailure {
+            AppLogger.w(TAG, "$symbol: не вдалось встановити плече ${secureConfigStore.leverage}x, ордер не відкриваю", it)
+            return
+        }
+
         val orderRequest = NewOrderRequest(
             symbol = symbol,
             side = side,

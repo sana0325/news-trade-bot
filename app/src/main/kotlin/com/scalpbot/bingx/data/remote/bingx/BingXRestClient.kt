@@ -16,6 +16,7 @@ import com.scalpbot.bingx.data.remote.bingx.dto.OrderResponseData
 import com.scalpbot.bingx.data.remote.bingx.dto.OrderResultDto
 import com.scalpbot.bingx.data.remote.bingx.dto.PositionDto
 import com.scalpbot.bingx.data.remote.bingx.dto.PositionModeDto
+import com.scalpbot.bingx.data.remote.bingx.dto.PositionSide
 import com.scalpbot.bingx.data.remote.bingx.dto.PremiumIndexDto
 import com.scalpbot.bingx.data.remote.bingx.dto.ServerTimeData
 import com.scalpbot.bingx.data.remote.bingx.dto.Ticker24hDto
@@ -32,6 +33,7 @@ import io.ktor.http.HttpStatusCode
 import java.net.URLEncoder
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -107,6 +109,18 @@ class BingXRestClient(
 
     suspend fun isHedgeMode(): Result<Boolean> =
         signedGet<PositionModeDto>("/openApi/swap/v1/positionSide/dual").map { it.dualSidePosition }
+
+    /**
+     * BingX не застосовує плече з розрахунків додатка автоматично — його треба
+     * виставити явно для символу/positionSide ПЕРЕД відкриттям ордера, інакше
+     * біржа торгує з тим плечем, що було виставлено востаннє (вручну чи раніше),
+     * і вся маржа/ризик-математика двигуна розходиться з реальністю на біржі.
+     */
+    suspend fun setLeverage(symbol: String, leverage: Int, positionSide: PositionSide): Result<Unit> =
+        signedPost<JsonElement>(
+            "/openApi/swap/v2/trade/leverage",
+            mapOf("symbol" to symbol, "side" to positionSide.name, "leverage" to leverage.toString()),
+        ).map { }
 
     suspend fun placeOrder(request: NewOrderRequest): Result<OrderResultDto> {
         val params = mutableMapOf(
