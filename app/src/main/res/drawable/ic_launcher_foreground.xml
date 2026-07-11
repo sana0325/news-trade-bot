@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Wicks -->
+    <path
+        android:fillColor="#3DDC97"
+        android:pathData="M37,30 L39,30 L39,78 L37,78 Z" />
+    <path
+        android:fillColor="#3DDC97"
+        android:pathData="M69,20 L71,20 L71,88 L69,88 Z" />
+    <!-- Candle bodies -->
+    <path
+        android:fillColor="#3DDC97"
+        android:pathData="M28,42 h20 v24 h-20 z" />
+    <path
+        android:fillColor="#3DDC97"
+        android:pathData="M60,34 h20 v40 h-20 z" />
+</vector>
