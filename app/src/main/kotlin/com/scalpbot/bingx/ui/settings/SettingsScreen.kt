@@ -7,12 +7,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -20,24 +27,31 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.scalpbot.bingx.core.util.AppLogger
 import com.scalpbot.bingx.data.local.db.entity.PairCacheEntity
 import com.scalpbot.bingx.data.local.prefs.RiskPreset
 import com.scalpbot.bingx.data.local.prefs.TradingMode
-import com.scalpbot.bingx.ui.common.ComingSoonScreen
 import com.scalpbot.bingx.ui.theme.LossRed
 import com.scalpbot.bingx.ui.theme.WarningAmber
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(onOpenLogs: () -> Unit, viewModel: SettingsViewModel = viewModel()) {
@@ -320,7 +334,43 @@ private fun ControlsSection(state: SettingsUiState, viewModel: SettingsViewModel
     TextButton(onClick = onOpenLogs, modifier = Modifier.padding(top = 8.dp)) { Text("Перегляд логів") }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogViewerScreen(onBack: () -> Unit) {
-    ComingSoonScreen(title = "Логи")
+    var logText by remember { mutableStateOf("Завантаження…") }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reload() {
+        logText = withContext(Dispatchers.IO) { AppLogger.readTail() }
+    }
+
+    LaunchedEffect(Unit) { reload() }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Логи") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Назад")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { scope.launch { reload() } }) { Text("Оновити") }
+                },
+            )
+        },
+    ) { padding ->
+        val scrollState = rememberScrollState()
+        Text(
+            text = logText,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(12.dp)
+                .verticalScroll(scrollState),
+        )
+    }
 }
