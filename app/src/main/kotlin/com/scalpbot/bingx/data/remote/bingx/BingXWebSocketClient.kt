@@ -12,6 +12,7 @@ import io.ktor.websocket.readText
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.zip.GZIPInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -61,6 +62,8 @@ class BingXWebSocketClient(private val httpClient: HttpClient) {
                 try {
                     connectAndListen()
                     attempt = 0
+                } catch (t: CancellationException) {
+                    throw t // навмисна зупинка (stop()/зміна мережі) — не помилка, не логуємо як обрив
                 } catch (t: Throwable) {
                     AppLogger.w(TAG, "WS session ended", t)
                     _events.tryEmit(MarketWsEvent.Disconnected(t))
