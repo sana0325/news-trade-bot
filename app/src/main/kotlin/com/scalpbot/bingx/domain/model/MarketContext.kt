@@ -19,7 +19,6 @@ data class TradeHistorySummary(
 /** Усе, що двигун збирає для одного опитування DeepSeek по одній парі. */
 data class MarketContext(
     val symbol: String,
-    val candlesM1: List<Candle>,
     val candlesM5: List<Candle>,
     val candlesM15: List<Candle>,
     val spreadPercent: Double,

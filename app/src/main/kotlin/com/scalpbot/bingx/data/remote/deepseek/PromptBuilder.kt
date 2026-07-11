@@ -17,7 +17,7 @@ object PromptBuilder {
         відкрити шорт, чи пропустити цю свічку.
 
         Правила:
-        1. Це ЧИСТИЙ СКАЛЬП: горизонт угоди — хвилини. Основа рішення — M1 і M5 свічки;
+        1. Це ЧИСТИЙ СКАЛЬП: горизонт угоди — хвилини. Основа рішення — M5 свічки;
            M15 використовуй ЛИШЕ як контекст загального тренду, не як головний сигнал.
         2. Оцінюй лонг і шорт РІВНОЦІННО. У тебе немає систематичного упередження ні
            в один бік — рішення базується виключно на поточній структурі ціни, обʼємі,
@@ -77,7 +77,6 @@ private data class TradeHistoryPayload(
 @Serializable
 private data class MarketContextPayload(
     val symbol: String,
-    @SerialName("candles_m1") val candlesM1: List<CandlePayload>,
     @SerialName("candles_m5") val candlesM5: List<CandlePayload>,
     @SerialName("candles_m15_trend_context") val candlesM15: List<CandlePayload>,
     val spreadPercent: Double,
@@ -90,7 +89,6 @@ private data class MarketContextPayload(
     companion object {
         fun from(context: MarketContext): MarketContextPayload = MarketContextPayload(
             symbol = context.symbol,
-            candlesM1 = context.candlesM1.map { it.toPayload() },
             candlesM5 = context.candlesM5.map { it.toPayload() },
             candlesM15 = context.candlesM15.map { it.toPayload() },
             spreadPercent = context.spreadPercent,

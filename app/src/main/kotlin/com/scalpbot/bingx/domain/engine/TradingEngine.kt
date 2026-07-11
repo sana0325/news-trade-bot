@@ -169,12 +169,16 @@ class TradingEngine(
     }
 
     private fun handleKlineUpdate(event: MarketWsEvent.KlineUpdate) {
-        if (event.interval.startsWith("kline_1min") || event.interval == "1min") {
+        // M1 навмисно не тригерить оцінку рішень — надто шумний таймфрейм для
+        // цього бота (часті хибні входи проїдали депозит на комісіях/стопах).
+        // M1-тіки й далі йдуть у handleQuickPriceMove нижче для детекції різких
+        // рухів ціни; сам сигнал на вхід тепер рахується від закриття M5-свічки.
+        if (event.interval.startsWith("kline_5min")) {
             val key = event.symbol
             val previousOpen = lastCandleOpenTimeMs[key]
             lastCandleOpenTimeMs[key] = event.kline.openTimeMs
             if (previousOpen != null && previousOpen != event.kline.openTimeMs) {
-                engineScope?.launch { onM1CandleClosed(event.symbol) }
+                engineScope?.launch { onCandleClosed(event.symbol) }
             }
         }
         handleQuickPriceMove(event.symbol, event.kline.close)
@@ -189,11 +193,11 @@ class TradingEngine(
         val lastTrigger = lastQuickMoveTriggerAt[symbol] ?: 0L
         if (now - lastTrigger < QUICK_MOVE_MIN_INTERVAL_MS) return
         lastQuickMoveTriggerAt[symbol] = now
-        engineScope?.launch { onM1CandleClosed(symbol) }
+        engineScope?.launch { onCandleClosed(symbol) }
     }
 
-    /** Опитує DeepSeek на закритті M1-свічки (або різкому русі ціни) для однієї пари. */
-    private suspend fun onM1CandleClosed(symbol: String) {
+    /** Опитує DeepSeek на закритті M5-свічки (або різкому русі ціни) для однієї пари. */
+    private suspend fun onCandleClosed(symbol: String) {
         if (_state.value.status != EngineStatus.RUNNING) return
         if (tradeDao.getOpenTrade() != null) return
         if (symbol !in pairDao.getEnabledSymbols()) return
@@ -252,7 +256,7 @@ class TradingEngine(
         // не на тому боці від актуальної ринкової ("SL Price must be greater/less
         // than Last Price" від BingX). Тому перед розрахунком SL/TP тягнемо свіжу ціну.
         val entryPrice = bingXRestClient.getTicker24h(symbol).getOrNull()?.lastPrice?.takeIf { it > 0.0 }
-            ?: context.candlesM1.lastOrNull()?.close
+            ?: context.candlesM5.lastOrNull()?.close
             ?: return
 
         val quantity = PositionSizer.computeQuantity(
@@ -311,7 +315,7 @@ class TradingEngine(
                 pnlPercent = null,
                 aiReason = reason,
                 aiConfidence = confidence,
-                marketContextJson = runCatching { json.encodeToString(context.candlesM1) }.getOrDefault("[]"),
+                marketContextJson = runCatching { json.encodeToString(context.candlesM5) }.getOrDefault("[]"),
                 closeReason = null,
                 lessonsVersion = lessonDao.getActive()?.version,
             )
@@ -401,8 +405,7 @@ class TradingEngine(
     private suspend fun fetchEquity(): Double? = bingXRestClient.getBalance().getOrNull()?.equity
 
     private suspend fun buildMarketContext(symbol: String): MarketContext? {
-        val m1 = bingXRestClient.getKlines(symbol, "1m", 30).getOrNull() ?: return null
-        val m5 = bingXRestClient.getKlines(symbol, "5m", 20).getOrNull() ?: emptyList()
+        val m5 = bingXRestClient.getKlines(symbol, "5m", 20).getOrNull() ?: return null
         val m15 = bingXRestClient.getKlines(symbol, "15m", 10).getOrNull() ?: emptyList()
         val bookTicker = bingXRestClient.getBookTicker(symbol).getOrNull()
         val premium = bingXRestClient.getPremiumIndex(symbol).getOrNull()
@@ -421,7 +424,6 @@ class TradingEngine(
 
         return MarketContext(
             symbol = symbol,
-            candlesM1 = m1.map { it.toCandle() },
             candlesM5 = m5.map { it.toCandle() },
             candlesM15 = m15.map { it.toCandle() },
             spreadPercent = bookTicker?.spreadPercent() ?: 0.0,
