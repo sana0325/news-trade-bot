@@ -3,7 +3,7 @@ package com.scalpbot.bingx.ui.market
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.core.util.AppLogger
 import com.scalpbot.bingx.data.local.db.entity.TradeEntity
 import com.scalpbot.bingx.domain.model.Candle
@@ -21,7 +21,7 @@ sealed interface ChartLoadState {
 
 class MarketDetailViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val locator = (application as ScalpBotApp).serviceLocator
+    private val locator = (application as ShiScalpBotApp).serviceLocator
 
     private val _chartState = MutableStateFlow<ChartLoadState>(ChartLoadState.Loading)
     val chartState: StateFlow<ChartLoadState> = _chartState

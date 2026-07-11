@@ -6,7 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.core.util.AppLogger
 import com.scalpbot.bingx.data.local.db.entity.LessonEntity
 import com.scalpbot.bingx.data.local.db.entity.ReportEntity
@@ -38,7 +38,7 @@ class AnalysisReportWorker(context: Context, params: WorkerParameters) : Corouti
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     override suspend fun doWork(): Result {
-        val locator = (applicationContext as ScalpBotApp).serviceLocator
+        val locator = (applicationContext as ShiScalpBotApp).serviceLocator
         val tradeDao = locator.database.tradeDao()
         val reportDao = locator.database.reportDao()
         val lessonDao = locator.database.lessonDao()

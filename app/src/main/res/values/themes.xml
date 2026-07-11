@@ -4,7 +4,7 @@
       Легкий міст-тема до першого кадру Compose: сама тема (dark, зелений/червоний
       для PnL) визначена в Kotlin (ui/theme/Theme.kt) через Material3 ColorScheme.
     -->
-    <style name="Theme.ScalpBot" parent="android:Theme.DeviceDefault.NoActionBar">
+    <style name="Theme.ShiScalpBot" parent="android:Theme.DeviceDefault.NoActionBar">
         <item name="android:windowBackground">@color/scalpbot_background</item>
         <item name="android:statusBarColor">@color/scalpbot_background</item>
         <item name="android:navigationBarColor">@color/scalpbot_background</item>

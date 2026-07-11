@@ -1,4 +1,4 @@
-# ScalpBot
+# ShiScalpBot
 
 Автономний Android-додаток для скальпінгу на BingX Perpetual Futures з торговими
 рішеннями від DeepSeek API. Нативний Kotlin + Jetpack Compose — **все працює
@@ -58,7 +58,7 @@ DeepSeek дешеві, тож економити на кількості зап�
 
 Кожен push у гілку `main`/`develop`/`claude/**` запускає workflow
 `.github/workflows/build-apk.yml`, який ганяє юніт-тести і збирає debug APK.
-Готовий файл — в артефактах запуску (`scalpbot-debug-apk`).
+Готовий файл — в артефактах запуску (`shiscalpbot-debug-apk`).
 
 ### Локально
 

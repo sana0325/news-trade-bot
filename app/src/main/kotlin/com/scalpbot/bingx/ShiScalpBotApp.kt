@@ -7,7 +7,7 @@ import com.scalpbot.bingx.notification.NotificationChannels
 import com.scalpbot.bingx.service.worker.AnalysisReportWorker
 import com.scalpbot.bingx.service.worker.PairsRefreshWorker
 
-class ScalpBotApp : Application() {
+class ShiScalpBotApp : Application() {
 
     lateinit var serviceLocator: ServiceLocator
         private set

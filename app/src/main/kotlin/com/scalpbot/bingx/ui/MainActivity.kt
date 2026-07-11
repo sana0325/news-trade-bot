@@ -26,7 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.scalpbot.bingx.service.BatteryOptimizationHelper
 import com.scalpbot.bingx.ui.navigation.ScalpNavHost
-import com.scalpbot.bingx.ui.theme.ScalpBotTheme
+import com.scalpbot.bingx.ui.theme.ShiScalpBotTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            ScalpBotTheme {
+            ShiScalpBotTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     ScalpNavHost()
                 }
@@ -79,7 +79,7 @@ private fun FirstRunPrompts() {
             title = { Text("Дозволити роботу у фоні") },
             text = {
                 Text(
-                    "ScalpBot торгує безперервно, навіть коли екран заблокований або додаток " +
+                    "ShiScalpBot торгує безперервно, навіть коли екран заблокований або додаток " +
                         "закритий. Щоб Android не приспав торговий процес, потрібен виняток з " +
                         "оптимізації батареї — інакше бот може пропускати сигнали.",
                 )

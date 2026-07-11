@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.data.local.prefs.TradingMode
 import com.scalpbot.bingx.domain.model.EngineState
 import com.scalpbot.bingx.domain.model.EngineStatus
@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val locator = (application as ScalpBotApp).serviceLocator
+    private val locator = (application as ShiScalpBotApp).serviceLocator
 
     val engineState: StateFlow<EngineState> = locator.tradingEngine.state
 

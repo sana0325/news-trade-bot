@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val ScalpBotDarkColorScheme = darkColorScheme(
+private val ShiScalpBotDarkColorScheme = darkColorScheme(
     primary = AccentGreen,
     onPrimary = BackgroundDark,
     secondary = AccentGreenDim,
@@ -28,8 +28,8 @@ private val ScalpBotDarkColorScheme = darkColorScheme(
  * ігноруємо навмисно.
  */
 @Composable
-fun ScalpBotTheme(content: @Composable () -> Unit) {
-    val colorScheme = ScalpBotDarkColorScheme
+fun ShiScalpBotTheme(content: @Composable () -> Unit) {
+    val colorScheme = ShiScalpBotDarkColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -42,7 +42,7 @@ fun ScalpBotTheme(content: @Composable () -> Unit) {
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = ScalpBotTypography,
+        typography = ShiScalpBotTypography,
         content = content,
     )
 }

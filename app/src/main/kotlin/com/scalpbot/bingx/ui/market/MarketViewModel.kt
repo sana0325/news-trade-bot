@@ -3,14 +3,14 @@ package com.scalpbot.bingx.ui.market
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.domain.model.PairTicker
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class MarketViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val locator = (application as ScalpBotApp).serviceLocator
+    private val locator = (application as ShiScalpBotApp).serviceLocator
     val tickers: StateFlow<List<PairTicker>> = locator.marketRepository.pairTickers
 
     private var started = false

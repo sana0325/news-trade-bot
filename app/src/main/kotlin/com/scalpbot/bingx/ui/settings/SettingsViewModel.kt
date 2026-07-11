@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.data.local.db.entity.PairCacheEntity
 import com.scalpbot.bingx.data.local.prefs.RiskPreset
 import com.scalpbot.bingx.data.local.prefs.SecureConfigStore
@@ -33,7 +33,7 @@ data class SettingsUiState(
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val locator = (application as ScalpBotApp).serviceLocator
+    private val locator = (application as ShiScalpBotApp).serviceLocator
     private val config: SecureConfigStore = locator.secureConfigStore
 
     private val _uiState = MutableStateFlow(readState())

@@ -3,7 +3,7 @@ package com.scalpbot.bingx.ui.journal
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.data.local.db.entity.LessonEntity
 import com.scalpbot.bingx.data.local.db.entity.ReportEntity
 import com.scalpbot.bingx.data.local.db.entity.TradeEntity
@@ -25,7 +25,7 @@ data class JournalFilterState(
 
 class JournalViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val locator = (application as ScalpBotApp).serviceLocator
+    private val locator = (application as ShiScalpBotApp).serviceLocator
     private val tradeDao = locator.database.tradeDao()
     private val reportDao = locator.database.reportDao()
     private val lessonDao = locator.database.lessonDao()

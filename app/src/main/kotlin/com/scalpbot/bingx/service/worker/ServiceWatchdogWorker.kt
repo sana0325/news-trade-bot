@@ -8,7 +8,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.service.TradingForegroundService
 import java.util.concurrent.TimeUnit
 
@@ -23,7 +23,7 @@ private const val UNIQUE_WORK_NAME = "scalpbot_service_watchdog"
 class ServiceWatchdogWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val app = applicationContext as ScalpBotApp
+        val app = applicationContext as ShiScalpBotApp
         if (app.serviceLocator.secureConfigStore.botActive) {
             ContextCompat.startForegroundService(
                 applicationContext,

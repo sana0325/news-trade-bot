@@ -8,7 +8,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.core.util.AppLogger
 import com.scalpbot.bingx.data.local.db.entity.PairCacheEntity
 import java.util.concurrent.TimeUnit
@@ -27,7 +27,7 @@ private const val MAX_24H_MOVE_PERCENT = 20.0
 class PairsRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val locator = (applicationContext as ScalpBotApp).serviceLocator
+        val locator = (applicationContext as ShiScalpBotApp).serviceLocator
         val rest = locator.bingXRestClient
         val pairDao = locator.database.pairDao()
 

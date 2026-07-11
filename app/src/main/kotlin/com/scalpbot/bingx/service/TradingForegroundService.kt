@@ -11,7 +11,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.scalpbot.bingx.R
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.core.ServiceLocator
 import com.scalpbot.bingx.core.util.AppLogger
 import com.scalpbot.bingx.data.local.db.entity.CloseReason
@@ -64,7 +64,7 @@ class TradingForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        locator = (application as ScalpBotApp).serviceLocator
+        locator = (application as ShiScalpBotApp).serviceLocator
         locator.tradingEngine.notifier = locator.tradeNotifier
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -167,7 +167,7 @@ class TradingForegroundService : Service() {
 
     private fun acquireWakeLock() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ScalpBot::TradingWakeLock").apply {
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShiScalpBot::TradingWakeLock").apply {
             setReferenceCounted(false)
             acquire(12 * 60 * 60 * 1000L) // safety timeout 12 год, знімається onDestroy
         }

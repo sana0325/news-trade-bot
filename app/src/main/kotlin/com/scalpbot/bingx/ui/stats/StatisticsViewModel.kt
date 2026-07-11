@@ -3,7 +3,7 @@ package com.scalpbot.bingx.ui.stats
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.scalpbot.bingx.ScalpBotApp
+import com.scalpbot.bingx.ShiScalpBotApp
 import com.scalpbot.bingx.data.local.db.entity.TradeDirection
 import com.scalpbot.bingx.data.local.db.entity.TradeEntity
 import com.scalpbot.bingx.data.local.db.entity.TradeStatus
@@ -29,7 +29,7 @@ data class StatsSummary(
 
 class StatisticsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val locator = (application as ScalpBotApp).serviceLocator
+    private val locator = (application as ShiScalpBotApp).serviceLocator
     private val tradeDao = locator.database.tradeDao()
 
     val summary: StateFlow<StatsSummary> = tradeDao.observeAll()

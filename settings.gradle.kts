@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ScalpBot"
+rootProject.name = "ShiScalpBot"
 include(":app")

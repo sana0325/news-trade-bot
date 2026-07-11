@@ -14,7 +14,7 @@ private const val LOG_FILE_BACKUP_NAME = "scalpbot.log.1"
 
 /**
  * Єдина точка логування: logcat завжди, файл з ротацією — після init(context)
- * (викликається в ScalpBotApp.onCreate). Один backup-файл при перевищенні
+ * (викликається в ShiScalpBotApp.onCreate). Один backup-файл при перевищенні
  * ліміту розміру — простий, але робочий варіант ротації для мобільного бота.
  */
 object AppLogger {
