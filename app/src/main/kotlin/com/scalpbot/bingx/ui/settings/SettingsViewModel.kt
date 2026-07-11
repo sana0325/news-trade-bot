@@ -21,7 +21,6 @@ data class SettingsUiState(
     val riskPreset: RiskPreset = RiskPreset.CONSERVATIVE,
     val marginPercent: Float = RiskPreset.CONSERVATIVE.marginPercent,
     val leverage: Int = RiskPreset.CONSERVATIVE.leverage,
-    val maxHoldMinutes: Int = 90,
     val dailyLossLimitPercent: Float = 10f,
     val maxTradesPerDay: Int = 15,
     val killSwitchTriggered: Boolean = false,
@@ -48,7 +47,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         riskPreset = config.riskPreset,
         marginPercent = config.marginPercent,
         leverage = config.leverage,
-        maxHoldMinutes = config.maxHoldMinutes,
         dailyLossLimitPercent = config.dailyLossLimitPercent,
         maxTradesPerDay = config.maxTradesPerDay,
         killSwitchTriggered = config.killSwitchTriggered,
@@ -77,11 +75,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         config.riskPreset = RiskPreset.CUSTOM
         config.marginPercent = marginPercent
         config.leverage = leverage
-        refresh()
-    }
-
-    fun setMaxHoldMinutes(value: Int) {
-        config.maxHoldMinutes = value
         refresh()
     }
 

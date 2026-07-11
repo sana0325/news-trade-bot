@@ -21,6 +21,9 @@ data class MarketContext(
     val symbol: String,
     val candlesM5: List<Candle>,
     val candlesM15: List<Candle>,
+    val candlesH1: List<Candle>,
+    /** ATR(14) на M5 у % від ціни — база для SL/TP (AtrCalculator), а не фіксовані відсотки. */
+    val atrPercent: Double,
     val spreadPercent: Double,
     val fundingRatePercent: Double,
     val volume24h: Double,

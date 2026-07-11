@@ -250,14 +250,9 @@ private fun RiskSection(
 
 @Composable
 private fun LimitsSection(state: SettingsUiState, viewModel: SettingsViewModel) {
-    var maxHold by remember { mutableStateOf(state.maxHoldMinutes.toString()) }
     var dailyLimit by remember { mutableStateOf(state.dailyLossLimitPercent.toString()) }
     var maxTrades by remember { mutableStateOf(state.maxTradesPerDay.toString()) }
 
-    NumberField("Макс. тривалість угоди (хв)", maxHold) {
-        maxHold = it
-        it.toIntOrNull()?.let(viewModel::setMaxHoldMinutes)
-    }
     NumberField("Денний ліміт збитку (%)", dailyLimit) {
         dailyLimit = it
         it.toFloatOrNull()?.let(viewModel::setDailyLossLimitPercent)
@@ -267,7 +262,9 @@ private fun LimitsSection(state: SettingsUiState, viewModel: SettingsViewModel) 
         it.toIntOrNull()?.let(viewModel::setMaxTradesPerDay)
     }
     Text(
-        text = "Kill-switch (-30% від старту) і cooldown після 3 стопів поспіль — хардкод, з UI не змінюються.",
+        text = "Kill-switch (-30% від старту), cooldown після 3 стопів поспіль і тайм-аут " +
+            "позиції (макс. 4 год або закриття достроково, якщо за 30 M5-свічок ціна не " +
+            "пройшла хоча б 1×ATR у бік TP) — хардкод, з UI не змінюються.",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 8.dp),

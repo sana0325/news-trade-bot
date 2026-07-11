@@ -46,7 +46,6 @@ class SecureConfigStore(context: Context) {
         const val RISK_PRESET = "risk_preset"
         const val MARGIN_PERCENT = "margin_percent"
         const val LEVERAGE = "leverage"
-        const val MAX_HOLD_MINUTES = "max_hold_minutes"
         const val DAILY_LOSS_LIMIT_PERCENT = "daily_loss_limit_percent"
         const val MAX_TRADES_PER_DAY = "max_trades_per_day"
         const val SESSION_START_EQUITY_USD = "session_start_equity_usd"
@@ -103,10 +102,6 @@ class SecureConfigStore(context: Context) {
     var leverage: Int
         get() = prefs.getInt(Keys.LEVERAGE, RiskPreset.CONSERVATIVE.leverage)
         set(value) = prefs.edit().putInt(Keys.LEVERAGE, value).apply()
-
-    var maxHoldMinutes: Int
-        get() = prefs.getInt(Keys.MAX_HOLD_MINUTES, 90)
-        set(value) = prefs.edit().putInt(Keys.MAX_HOLD_MINUTES, value).apply()
 
     /** Додатне число, напр. 10f означає ліміт -10% на добу. */
     var dailyLossLimitPercent: Float

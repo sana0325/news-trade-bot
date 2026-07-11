@@ -15,16 +15,28 @@ sealed interface DecisionValidationResult {
  * Валідує сиру відповідь DeepSeek проти строгого контракту {action, symbol, sl_pct,
  * tp_pct, confidence, reason}. Будь-яка невідповідність (невалідний JSON, пропущене
  * поле, значення поза діапазоном) → Invalid, і TradingEngine трактує це як skip.
+ *
+ * sl_pct/tp_pct більше не звіряються з фіксованими діапазонами — вони залежать від
+ * поточної волатильності (ATR) і транзакційних витрат (спред+комісії) конкретної
+ * пари/моменту, тому діапазони рахуються тут же з [atrPercent]/[spreadPercent].
  */
 object DecisionValidator {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    private val SL_RANGE = 0.3..0.8
-    private val TP_RANGE = 0.5..1.5
     private val CONFIDENCE_RANGE = 0.0..1.0
 
-    fun validate(rawResponse: String): DecisionValidationResult {
+    // Валідні межі тут навмисно ширші за рекомендовані DeepSeek у system-промті
+    // (SL 1.5-2x, TP 2.5-3x ATR) — невеликий запас, а не жорсткий збіг один-в-один.
+    private const val SL_ATR_MULTIPLIER_MIN = 1.0
+    private const val SL_ATR_MULTIPLIER_MAX = 2.5
+    private const val TP_ATR_MULTIPLIER_MIN = 2.0
+    private const val TP_ATR_MULTIPLIER_MAX = 4.0
+
+    /** Мінімальне співвідношення ризик/прибуток tp_pct/sl_pct. */
+    private const val MIN_RISK_REWARD = 1.5
+
+    fun validate(rawResponse: String, atrPercent: Double, spreadPercent: Double): DecisionValidationResult {
         val dto = try {
             json.decodeFromString(RawDecisionDto.serializer(), extractJsonObject(rawResponse))
         } catch (e: Exception) {
@@ -54,8 +66,30 @@ object DecisionValidator {
         val slPct = dto.slPct ?: return DecisionValidationResult.Invalid(rawResponse, "Відсутній sl_pct")
         val tpPct = dto.tpPct ?: return DecisionValidationResult.Invalid(rawResponse, "Відсутній tp_pct")
 
-        if (slPct !in SL_RANGE) return DecisionValidationResult.Invalid(rawResponse, "sl_pct поза межами 0.3-0.8: $slPct")
-        if (tpPct !in TP_RANGE) return DecisionValidationResult.Invalid(rawResponse, "tp_pct поза межами 0.5-1.5: $tpPct")
+        // ATR-відносні межі: якщо ATR аномально малий, нижня межа підіймається до
+        // жорсткого мінімуму (spreadPercent+комісії) — інакше SL/TP зʼїдались би
+        // транзакційними витратами ще до того, як спрацював би сигнал.
+        val slLower = maxOf(atrPercent * SL_ATR_MULTIPLIER_MIN, RiskMath.minStopLossPercent(spreadPercent))
+        val slUpper = atrPercent * SL_ATR_MULTIPLIER_MAX
+        if (slPct < slLower || slPct > slUpper) {
+            return DecisionValidationResult.Invalid(
+                rawResponse,
+                "sl_pct $slPct поза межами $slLower-$slUpper (ATR=$atrPercent%, спред=$spreadPercent%)",
+            )
+        }
+
+        val tpLower = maxOf(atrPercent * TP_ATR_MULTIPLIER_MIN, RiskMath.minTakeProfitPercent(spreadPercent))
+        val tpUpper = atrPercent * TP_ATR_MULTIPLIER_MAX
+        if (tpPct < tpLower || tpPct > tpUpper) {
+            return DecisionValidationResult.Invalid(
+                rawResponse,
+                "tp_pct $tpPct поза межами $tpLower-$tpUpper (ATR=$atrPercent%, спред=$spreadPercent%)",
+            )
+        }
+
+        if (tpPct < slPct * MIN_RISK_REWARD) {
+            return DecisionValidationResult.Invalid(rawResponse, "RR ${tpPct / slPct} менше мінімального $MIN_RISK_REWARD")
+        }
 
         return DecisionValidationResult.Valid(
             TradeDecision(action, symbol, slPct, tpPct, confidence, dto.reason ?: ""),

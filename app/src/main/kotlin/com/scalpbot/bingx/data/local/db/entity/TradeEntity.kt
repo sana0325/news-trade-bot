@@ -28,11 +28,15 @@ data class TradeEntity(
     val pnlPercent: Double?,
     val aiReason: String,
     val aiConfidence: Double,
-    /** JSON-знімок ринкового контексту (свічки M1/M5/M15, спред, funding) на момент входу. */
+    /** JSON-знімок ринкового контексту (свічки M5/M15, спред, funding) на момент входу. */
     val marketContextJson: String,
     val closeReason: CloseReason?,
     /** Версія "уроків", активна на момент прийняття рішення. */
     val lessonsVersion: Int?,
     /** Ідентифікатор дводенного звіту, у якому цю угоду вже розібрали (null, поки не розібрана). */
     val analyzedInReportId: Long? = null,
+    /** ATR(14) на M5 у % від ціни на момент входу — база, від якої рахувались SL/TP. */
+    val atrPercentAtEntry: Double? = null,
+    /** Тривалість угоди в секундах, рахується при закритті (closedAtEpochMs - openedAtEpochMs). */
+    val durationSeconds: Long? = null,
 )

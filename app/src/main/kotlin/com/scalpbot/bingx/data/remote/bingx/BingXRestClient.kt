@@ -12,6 +12,8 @@ import com.scalpbot.bingx.data.remote.bingx.dto.ContractDto
 import com.scalpbot.bingx.data.remote.bingx.dto.KlineDto
 import com.scalpbot.bingx.data.remote.bingx.dto.ListenKeyData
 import com.scalpbot.bingx.data.remote.bingx.dto.NewOrderRequest
+import com.scalpbot.bingx.data.remote.bingx.dto.OrderHistoryData
+import com.scalpbot.bingx.data.remote.bingx.dto.OrderHistoryDto
 import com.scalpbot.bingx.data.remote.bingx.dto.OrderResponseData
 import com.scalpbot.bingx.data.remote.bingx.dto.OrderResultDto
 import com.scalpbot.bingx.data.remote.bingx.dto.PositionDto
@@ -137,6 +139,13 @@ class BingXRestClient(
 
     suspend fun closeAllPositions(): Result<CloseAllPositionsData> =
         signedPost("/openApi/swap/v2/trade/closeAllPositions")
+
+    /** Історія ордерів по символу від [sinceEpochMs] — щоб визначити справжню причину закриття позиції (SL чи TP спрацював). */
+    suspend fun getOrderHistory(symbol: String, sinceEpochMs: Long, limit: Int = 50): Result<List<OrderHistoryDto>> =
+        signedGet<OrderHistoryData>(
+            "/openApi/swap/v2/trade/allOrders",
+            mapOf("symbol" to symbol, "startTime" to sinceEpochMs.toString(), "limit" to limit.toString()),
+        ).map { it.orders }
 
     suspend fun createListenKey(): Result<String> =
         signedPost<ListenKeyData>("/openApi/user/auth/userDataStream").map { it.listenKey }

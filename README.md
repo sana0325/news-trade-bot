@@ -48,9 +48,9 @@ LIVE вводиться окремо від DEMO — режими повніст
 ### DeepSeek
 
 Створіть API-ключ на platform.deepseek.com і введіть його в Налаштуваннях. Модель —
-`deepseek-chat`. Двигун опитує DeepSeek часто (на закритті кожної M1-свічки по
-кожній активній парі) — токени DeepSeek дешеві, тож економити на кількості
-запитів немає сенсу.
+`deepseek-chat`. Двигун опитує DeepSeek на закритті кожної M5-свічки (робочий
+таймфрейм) по кожній активній парі, з M15/H1 як контекстом тренду — токени
+DeepSeek дешеві, тож економити на кількості запитів немає сенсу.
 
 ## Збірка APK
 
@@ -85,7 +85,7 @@ LIVE вводиться окремо від DEMO — режими повніст
 ```
 data/local     — Room (журнал угод, звіти, уроки, кеш пар) + EncryptedSharedPreferences
 data/remote    — BingX REST/WS клієнт, DeepSeek клієнт
-domain/engine  — TradingEngine, RiskManager, PositionSizer, SlTpCalculator, DecisionValidator
+domain/engine  — TradingEngine, RiskManager, PositionSizer, SlTpCalculator, AtrCalculator, DecisionValidator
 service        — TradingForegroundService, BootReceiver, WorkManager-воркери
 notification   — канали сповіщень (угоди/системні/сервіс) + TradeNotifier
 ui             — Compose-екрани: Дашборд, Ринок, Журнал, Статистика, Налаштування
@@ -113,6 +113,7 @@ ui             — Compose-екрани: Дашборд, Ринок, Журна�
 ./gradlew testDebugUnitTest
 ```
 
-Покриті юніт-тестами: розрахунок розміру позиції (`PositionSizerTest`), SL/TP
-(`SlTpCalculatorTest`), kill-switch/денний ліміт/спред (`RiskMathTest`), парсинг
-відповіді DeepSeek (`DecisionValidatorTest`), підпис запитів BingX (`BingXSignerTest`).
+Покриті юніт-тестами: розрахунок розміру позиції (`PositionSizerTest`), SL/TP від
+ATR (`SlTpCalculatorTest`), сам ATR і фільтр волатильного шоку (`AtrCalculatorTest`),
+kill-switch/денний ліміт/спред/мінімальні межі SL-TP (`RiskMathTest`), ATR-відносна
+валідація відповіді DeepSeek (`DecisionValidatorTest`), підпис запитів BingX (`BingXSignerTest`).

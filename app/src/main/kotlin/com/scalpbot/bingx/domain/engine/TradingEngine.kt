@@ -17,6 +17,7 @@ import com.scalpbot.bingx.data.remote.bingx.dto.KlineDto
 import com.scalpbot.bingx.data.remote.bingx.dto.MarketWsEvent
 import com.scalpbot.bingx.data.remote.bingx.dto.NewOrderRequest
 import com.scalpbot.bingx.data.remote.bingx.dto.OrderSide
+import com.scalpbot.bingx.data.remote.bingx.dto.PositionDto
 import com.scalpbot.bingx.data.remote.bingx.dto.PositionSide
 import com.scalpbot.bingx.data.remote.bingx.dto.TpSlSpec
 import com.scalpbot.bingx.data.remote.deepseek.DeepSeekClient
@@ -44,6 +45,12 @@ private const val QUICK_MOVE_TRIGGER_PERCENT = 0.5
 private const val QUICK_MOVE_MIN_INTERVAL_MS = 20_000L
 private const val POSITION_POLL_INTERVAL_MS = 15_000L
 private const val EQUITY_POLL_INTERVAL_MS = 20_000L
+
+/** Хардкод — жорсткий верхній ліміт утримання позиції, з UI не змінюється. */
+private const val MAX_HOLD_MS = 4 * 60 * 60_000L
+private const val M5_INTERVAL_MS = 5 * 60_000L
+/** Якщо за стільки M5-свічок ціна не пройшла хоча б 1×ATR у бік TP — позиція "застрягла", закриваємо достроково. */
+private const val NO_PROGRESS_CANDLE_LIMIT = 30
 
 /**
  * Оркестратор торгової логіки. Не знає нічого про Android Service/нотифікації —
@@ -209,7 +216,7 @@ class TradingEngine(
                 return
             }
 
-        val decision = when (val validation = DecisionValidator.validate(raw)) {
+        val decision = when (val validation = DecisionValidator.validate(raw, context.atrPercent, context.spreadPercent)) {
             is DecisionValidationResult.Valid -> validation.decision
             is DecisionValidationResult.Invalid -> {
                 AppLogger.w(TAG, "Невалідна відповідь DeepSeek для $symbol: ${validation.error}")
@@ -250,7 +257,7 @@ class TradingEngine(
         val pair = pairDao.getEnabled().firstOrNull { it.symbol == symbol } ?: run {
             AppLogger.w(TAG, "$symbol: немає кешованих даних контракту, skip"); return
         }
-        // Ціна закриття M1-свічки з context могла застаріти на кілька секунд (збір
+        // Ціна закриття свічки з context могла застаріти на кілька секунд (збір
         // контексту + round-trip до DeepSeek + ризик-перевірки) — на волатильній
         // мікрокап-парі цього досить, щоб SL, порахований від старої ціни, опинився
         // не на тому боці від актуальної ринкової ("SL Price must be greater/less
@@ -318,6 +325,8 @@ class TradingEngine(
                 marketContextJson = runCatching { json.encodeToString(context.candlesM5) }.getOrDefault("[]"),
                 closeReason = null,
                 lessonsVersion = lessonDao.getActive()?.version,
+                atrPercentAtEntry = context.atrPercent,
+                durationSeconds = null,
             )
             val id = tradeDao.insert(trade)
             val saved = trade.copy(id = id)
@@ -348,24 +357,19 @@ class TradingEngine(
                 return
             }
 
-            val elapsedMinutes = (System.currentTimeMillis() - trade.openedAtEpochMs) / 60_000L
-            if (elapsedMinutes >= secureConfigStore.maxHoldMinutes) {
-                bingXRestClient.closeAllPositions()
-                finalizeTradeClose(trade, CloseReason.TIMEOUT)
-                return
-            }
-
             val positions = bingXRestClient.getPositions(trade.symbol).getOrNull()
             val stillOpen = positions?.any { kotlin.math.abs(it.positionAmt) > 0.0 } == true
             if (!stillOpen) {
-                // Позиція вже закрита на біржі (TP/SL спрацював там, не в додатку). Без
-                // ідентифікатора ордера, що її закрив, визначаємо TP/SL за тим, до якої
-                // з двох цін останній відомий маркет-прайс ближчий.
-                val exitPrice = positions?.firstOrNull()?.markPrice ?: lastKnownPrice[trade.symbol] ?: trade.tpPrice
-                val distanceToTp = kotlin.math.abs(exitPrice - trade.tpPrice)
-                val distanceToSl = kotlin.math.abs(exitPrice - trade.slPrice)
-                val closeReason = if (distanceToTp <= distanceToSl) CloseReason.TAKE_PROFIT else CloseReason.STOP_LOSS
+                val fallbackExitPrice = positions?.firstOrNull()?.markPrice ?: lastKnownPrice[trade.symbol] ?: trade.tpPrice
+                val (closeReason, exitPrice) = resolveActualCloseReason(trade, fallbackExitPrice)
                 finalizeTradeClose(trade, closeReason, exitPrice)
+                return
+            }
+
+            val elapsedMs = System.currentTimeMillis() - trade.openedAtEpochMs
+            if (elapsedMs >= MAX_HOLD_MS || isStuckWithoutProgress(trade, elapsedMs, positions)) {
+                bingXRestClient.closeAllPositions()
+                finalizeTradeClose(trade, CloseReason.TIMEOUT)
                 return
             }
 
@@ -373,19 +377,69 @@ class TradingEngine(
         }
     }
 
+    /**
+     * За 4 години (хардкод, з UI не змінюється) АБО якщо за [NO_PROGRESS_CANDLE_LIMIT]
+     * M5-свічок ціна не пройшла хоча б 1×ATR у бік TP — позиція вважається "застряглою"
+     * і закривається достроково, замість того щоб чекати повний тайм-аут або відкат назад.
+     */
+    private fun isStuckWithoutProgress(trade: TradeEntity, elapsedMs: Long, positions: List<PositionDto>?): Boolean {
+        val candlesElapsed = elapsedMs / M5_INTERVAL_MS
+        if (candlesElapsed < NO_PROGRESS_CANDLE_LIMIT) return false
+        val atrPercent = trade.atrPercentAtEntry ?: return false
+        val currentPrice = positions?.firstOrNull()?.markPrice ?: lastKnownPrice[trade.symbol] ?: return false
+        val atrAbs = atrPercent / 100.0 * trade.entryPrice
+        val progressTowardTp = if (trade.direction == TradeDirection.LONG) {
+            currentPrice - trade.entryPrice
+        } else {
+            trade.entryPrice - currentPrice
+        }
+        return progressTowardTp < atrAbs
+    }
+
+    /**
+     * Позиція вже закрита на біржі (TP/SL спрацював там, не в додатку) — тягнемо
+     * історію ордерів і шукаємо, який саме supplementary-ордер (STOP_MARKET чи
+     * TAKE_PROFIT_MARKET) реально виконався, замість здогадуватись за відстанню
+     * ціни. Якщо історія ордерів недоступна/має неочікувану форму — відкочуємось
+     * на попередню евристику (найближча з двох цін), щоб журнал не лишався порожнім.
+     */
+    private suspend fun resolveActualCloseReason(trade: TradeEntity, fallbackExitPrice: Double): Pair<CloseReason, Double> {
+        val filledExitOrder = bingXRestClient.getOrderHistory(trade.symbol, trade.openedAtEpochMs).getOrNull()
+            ?.filter { it.status.equals("FILLED", ignoreCase = true) }
+            ?.filter { it.type.equals("STOP_MARKET", ignoreCase = true) || it.type.equals("TAKE_PROFIT_MARKET", ignoreCase = true) }
+            ?.maxByOrNull { it.updateTime }
+
+        if (filledExitOrder != null) {
+            val reason = if (filledExitOrder.type.equals("TAKE_PROFIT_MARKET", ignoreCase = true)) {
+                CloseReason.TAKE_PROFIT
+            } else {
+                CloseReason.STOP_LOSS
+            }
+            val price = filledExitOrder.avgPrice.takeIf { it > 0.0 } ?: fallbackExitPrice
+            return reason to price
+        }
+
+        val distanceToTp = kotlin.math.abs(fallbackExitPrice - trade.tpPrice)
+        val distanceToSl = kotlin.math.abs(fallbackExitPrice - trade.slPrice)
+        val reason = if (distanceToTp <= distanceToSl) CloseReason.TAKE_PROFIT else CloseReason.STOP_LOSS
+        return reason to fallbackExitPrice
+    }
+
     private suspend fun finalizeTradeClose(trade: TradeEntity, reason: CloseReason, exitPriceOverride: Double? = null) {
         val exitPrice = exitPriceOverride ?: trade.exitPrice ?: trade.entryPrice
         val direction = if (trade.direction == TradeDirection.LONG) 1.0 else -1.0
         val pnlPercent = ((exitPrice - trade.entryPrice) / trade.entryPrice) * direction * 100.0 * trade.leverage
         val pnlUsd = trade.marginUsd * (pnlPercent / 100.0)
+        val closedAtEpochMs = System.currentTimeMillis()
 
         val closed = trade.copy(
             status = TradeStatus.CLOSED,
-            closedAtEpochMs = System.currentTimeMillis(),
+            closedAtEpochMs = closedAtEpochMs,
             exitPrice = exitPrice,
             pnlUsd = pnlUsd,
             pnlPercent = pnlPercent,
             closeReason = reason,
+            durationSeconds = (closedAtEpochMs - trade.openedAtEpochMs) / 1000L,
         )
         tradeDao.update(closed)
         riskManager.onTradeClosed()
@@ -405,8 +459,25 @@ class TradingEngine(
     private suspend fun fetchEquity(): Double? = bingXRestClient.getBalance().getOrNull()?.equity
 
     private suspend fun buildMarketContext(symbol: String): MarketContext? {
-        val m5 = bingXRestClient.getKlines(symbol, "5m", 20).getOrNull() ?: return null
-        val m15 = bingXRestClient.getKlines(symbol, "15m", 10).getOrNull() ?: emptyList()
+        val m5Dto = bingXRestClient.getKlines(symbol, "5m", 20).getOrNull() ?: return null
+        val m5 = m5Dto.map { it.toCandle() }
+        val m15 = bingXRestClient.getKlines(symbol, "15m", 10).getOrNull()?.map { it.toCandle() } ?: emptyList()
+        val h1 = bingXRestClient.getKlines(symbol, "1h", 24).getOrNull()?.map { it.toCandle() } ?: emptyList()
+
+        // ATR рахуємо по ЗАКРИТИХ M5-свічках (без останньої — вона щойно відкрилась і
+        // ще формується), а шок-фільтр порівнює true range саме останньої свічки з
+        // цим ATR, щоб відсіяти новинні стрибки волатильності.
+        val closedM5 = if (m5.size > 1) m5.dropLast(1) else m5
+        val atrPercent = AtrCalculator.computePercent(closedM5) ?: run {
+            AppLogger.i(TAG, "$symbol: недостатньо історії M5 для ATR(14), skip")
+            return null
+        }
+        val shockRatio = AtrCalculator.shockRatio(m5)
+        if (shockRatio != null && shockRatio > AtrCalculator.SHOCK_RATIO_THRESHOLD) {
+            AppLogger.i(TAG, "$symbol: шок волатильності (true range ${"%.1f".format(shockRatio)}× ATR), пропускаю свічку")
+            return null
+        }
+
         val bookTicker = bingXRestClient.getBookTicker(symbol).getOrNull()
         val premium = bingXRestClient.getPremiumIndex(symbol).getOrNull()
         val pair = pairDao.getEnabled().firstOrNull { it.symbol == symbol }
@@ -424,8 +495,10 @@ class TradingEngine(
 
         return MarketContext(
             symbol = symbol,
-            candlesM5 = m5.map { it.toCandle() },
-            candlesM15 = m15.map { it.toCandle() },
+            candlesM5 = m5,
+            candlesM15 = m15,
+            candlesH1 = h1,
+            atrPercent = atrPercent,
             spreadPercent = bookTicker?.spreadPercent() ?: 0.0,
             fundingRatePercent = (premium?.lastFundingRate ?: 0.0) * 100.0,
             volume24h = pair?.volume24h ?: 0.0,

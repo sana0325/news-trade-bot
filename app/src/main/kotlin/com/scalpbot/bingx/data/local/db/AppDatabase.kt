@@ -16,7 +16,7 @@ import com.scalpbot.bingx.data.local.db.entity.TradeEntity
 
 @Database(
     entities = [TradeEntity::class, ReportEntity::class, LessonEntity::class, PairCacheEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -36,7 +36,12 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "scalpbot.db",
-                ).build().also { instance = it }
+                )
+                    // v1→v2 додав atrPercentAtEntry/durationSeconds до trades; попередньої
+                    // схеми не експортовано (перша реальна зміна), тож повної Migration
+                    // не написати безпечно — журнал угод буде скинуто один раз при апдейті.
+                    .fallbackToDestructiveMigration()
+                    .build().also { instance = it }
             }
     }
 }

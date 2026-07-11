@@ -121,6 +121,30 @@ data class OrderResultDto(
     val origQty: Double = 0.0,
 )
 
+/**
+ * `/openApi/swap/v2/trade/allOrders` — використовується лише для того, щоб
+ * визначити СПРАВЖНЮ причину закриття позиції (яка з двох supplementary-ордерів,
+ * STOP_MARKET чи TAKE_PROFIT_MARKET, реально виконалась на біржі), а не гадати
+ * за відстанню ціни. Форма відповіді не перевірена на реальному пристрої — якщо
+ * BingX поверне іншу структуру, парсинг впаде і TradingEngine тихо відкотиться
+ * на попередню евристику (див. BingXRestClient.unwrap/getOrNull).
+ */
+@Serializable
+data class OrderHistoryDto(
+    val symbol: String = "",
+    val orderId: Long = 0,
+    val type: String = "",
+    val side: String = "",
+    val status: String = "",
+    val avgPrice: Double = 0.0,
+    val stopPrice: Double = 0.0,
+    val time: Long = 0,
+    val updateTime: Long = 0,
+)
+
+@Serializable
+data class OrderHistoryData(val orders: List<OrderHistoryDto> = emptyList())
+
 @Serializable
 data class ListenKeyData(val listenKey: String)
 

@@ -17,8 +17,9 @@ object PromptBuilder {
         відкрити шорт, чи пропустити цю свічку.
 
         Правила:
-        1. Це ЧИСТИЙ СКАЛЬП: горизонт угоди — хвилини. Основа рішення — M5 свічки;
-           M15 використовуй ЛИШЕ як контекст загального тренду, не як головний сигнал.
+        1. Це ЧИСТИЙ СКАЛЬП: горизонт угоди — хвилини/години. Робочий таймфрейм — M5
+           свічки; M15 і H1 використовуй ЛИШЕ як контекст загального тренду, не як
+           головний сигнал.
         2. Оцінюй лонг і шорт РІВНОЦІННО. У тебе немає систематичного упередження ні
            в один бік — рішення базується виключно на поточній структурі ціни, обʼємі,
            funding rate і спреді, а не на звичці відкривати частіше в один бік.
@@ -27,16 +28,21 @@ object PromptBuilder {
            знайти угоду там, де її немає.
         4. Якщо в контексті є активні "уроки" з попередніх розборів — врахуй їх,
            це виправлення, отримані з аналізу реальних результатів бота.
-        5. Якщо спред задовгий відносно типового TP — це привід для skip.
-        6. sl_pct має бути в діапазоні 0.3–0.8 (відсоток від ціни входу),
-           tp_pct — у діапазоні 0.5–1.5. Обирай значення в межах цих діапазонів
-           виходячи з волатильності поточної пари.
+        5. atrPercent у контексті — це ATR(14) на M5 у % від ціни входу. SL і TP
+           рахуй ВІДНОСНО нього, а не як довільний фіксований відсоток:
+           sl_pct у діапазоні 1.5–2 × atrPercent, tp_pct — у діапазоні
+           2.5–3 × atrPercent. Мінімальне співвідношення ризик/прибуток
+           (tp_pct / sl_pct) — 1.5, інакше обирай "skip".
+        6. tp_pct обов'язково має покривати спред і комісії щонайменше втричі
+           (орієнтовна комісія тейкера ≈0.05% за угоду в один бік): якщо
+           tp_pct < 3 × (spreadPercent + 2 × 0.05), угода не окупить витрати
+           навіть у разі успіху — обирай "skip".
 
         Відповідай ВИКЛЮЧНО JSON-об'єктом (без markdown, без пояснень поза JSON) точно
         такої форми:
         {"action": "long" | "short" | "skip", "symbol": "<символ або null якщо skip>",
-         "sl_pct": <число 0.3-0.8 або null якщо skip>,
-         "tp_pct": <число 0.5-1.5 або null якщо skip>,
+         "sl_pct": <число ≈1.5-2×atrPercent або null якщо skip>,
+         "tp_pct": <число ≈2.5-3×atrPercent або null якщо skip>,
          "confidence": <число 0-1>, "reason": "<коротке пояснення українською>"}
     """.trimIndent()
 
@@ -79,6 +85,8 @@ private data class MarketContextPayload(
     val symbol: String,
     @SerialName("candles_m5") val candlesM5: List<CandlePayload>,
     @SerialName("candles_m15_trend_context") val candlesM15: List<CandlePayload>,
+    @SerialName("candles_h1_trend_context") val candlesH1: List<CandlePayload>,
+    val atrPercent: Double,
     val spreadPercent: Double,
     val fundingRatePercent: Double,
     val volume24h: Double,
@@ -91,6 +99,8 @@ private data class MarketContextPayload(
             symbol = context.symbol,
             candlesM5 = context.candlesM5.map { it.toPayload() },
             candlesM15 = context.candlesM15.map { it.toPayload() },
+            candlesH1 = context.candlesH1.map { it.toPayload() },
+            atrPercent = context.atrPercent,
             spreadPercent = context.spreadPercent,
             fundingRatePercent = context.fundingRatePercent,
             volume24h = context.volume24h,
