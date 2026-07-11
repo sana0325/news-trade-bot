@@ -7,6 +7,7 @@ import com.scalpbot.bingx.data.remote.NetworkClientFactory
 import com.scalpbot.bingx.data.remote.bingx.BingXRestClient
 import com.scalpbot.bingx.data.remote.bingx.BingXWebSocketClient
 import com.scalpbot.bingx.data.remote.deepseek.DeepSeekClient
+import com.scalpbot.bingx.data.repository.MarketRepository
 import com.scalpbot.bingx.domain.engine.RiskManager
 import com.scalpbot.bingx.domain.engine.SingleTradeLock
 import com.scalpbot.bingx.domain.engine.TradingEngine
@@ -29,6 +30,10 @@ class ServiceLocator private constructor(context: Context) {
 
     val riskManager: RiskManager by lazy { RiskManager(secureConfigStore, database.tradeDao()) }
     val tradeNotifier: TradeNotifier by lazy { TradeNotifier(appContext) }
+
+    val marketRepository: MarketRepository by lazy {
+        MarketRepository(bingXRestClient, bingXWebSocketClient, database.pairDao())
+    }
 
     /** Один інстанс на процес — FGS і UI (для стану) використовують той самий двигун. */
     val tradingEngine: TradingEngine by lazy {

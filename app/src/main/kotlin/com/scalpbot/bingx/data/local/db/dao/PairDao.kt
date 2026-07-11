@@ -16,6 +16,9 @@ interface PairDao {
     @Query("SELECT * FROM pairs ORDER BY rank ASC")
     fun observeAll(): Flow<List<PairCacheEntity>>
 
+    @Query("SELECT * FROM pairs ORDER BY rank ASC")
+    suspend fun getAll(): List<PairCacheEntity>
+
     @Query("SELECT * FROM pairs WHERE enabled = 1 ORDER BY rank ASC")
     suspend fun getEnabled(): List<PairCacheEntity>
 
