@@ -17,6 +17,11 @@ object NetworkClientFactory {
         isLenient = true
         coerceInputValues = true
         explicitNulls = false
+        // Без цього kotlinx.serialization мовчки не серіалізує поля, чиє значення
+        // збігається з дефолтом у data-класі (напр. DeepSeekResponseFormat.type,
+        // TpSlSpec.workingType) — DeepSeek/BingX отримували запит без обов'язкового
+        // поля замість очікуваного значення, обидва мовчки відхиляли запит.
+        encodeDefaults = true
     }
 
     fun create(): HttpClient = HttpClient(CIO) {
