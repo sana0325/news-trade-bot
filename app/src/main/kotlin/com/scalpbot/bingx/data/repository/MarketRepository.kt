@@ -92,7 +92,7 @@ class MarketRepository(
     private suspend fun seedSparklines(symbols: List<String>) = coroutineScope {
         symbols.map { symbol ->
             async {
-                val klines = bingXRestClient.getKlines(symbol, "1min", SPARKLINE_LENGTH).getOrNull().orEmpty()
+                val klines = bingXRestClient.getKlines(symbol, "1m", SPARKLINE_LENGTH).getOrNull().orEmpty()
                 if (klines.isNotEmpty()) sparklines[symbol] = klines.map { it.close }.toMutableList()
             }
         }.awaitAll()

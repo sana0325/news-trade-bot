@@ -27,9 +27,15 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import java.net.URLEncoder
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 private const val TAG = "BingXRestClient"
 
@@ -169,14 +175,25 @@ class BingXRestClient(
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
+    /**
+     * Спершу читаємо "code"/"msg" з сирого JSON окремо, а лише потім декодуємо
+     * весь envelope в T — на помилках BingX часто повертає "data":{} навіть для
+     * ендпоінтів, де успішна відповідь очікує масив/примітив, і сувора типізована
+     * декодизація envelope одразу впала б з незрозумілим JsonConvertException
+     * замість чіткого коду й тексту помилки BingX.
+     */
     private suspend inline fun <reified T> unwrap(response: HttpResponse): T {
         if (response.status == HttpStatusCode.TooManyRequests) {
             throw BingXRateLimitException()
         }
-        val envelope: BingXEnvelope<T> = response.body()
-        if (envelope.code != 0) {
-            throw BingXApiException(envelope.code, envelope.msg ?: "Невідома помилка BingX")
+        val bodyText = response.bodyAsText()
+        val root = json.parseToJsonElement(bodyText).jsonObject
+        val code = root["code"]?.jsonPrimitive?.intOrNull ?: 0
+        if (code != 0) {
+            val msg = root["msg"]?.jsonPrimitive?.contentOrNull ?: "Невідома помилка BingX"
+            throw BingXApiException(code, msg)
         }
+        val envelope: BingXEnvelope<T> = json.decodeFromString(bodyText)
         return envelope.data ?: error("BingX: порожній data у відповіді (code=0)")
     }
 }

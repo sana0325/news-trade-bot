@@ -382,9 +382,9 @@ class TradingEngine(
     private suspend fun fetchEquity(): Double? = bingXRestClient.getBalance().getOrNull()?.equity
 
     private suspend fun buildMarketContext(symbol: String): MarketContext? {
-        val m1 = bingXRestClient.getKlines(symbol, "1min", 30).getOrNull() ?: return null
-        val m5 = bingXRestClient.getKlines(symbol, "5min", 20).getOrNull() ?: emptyList()
-        val m15 = bingXRestClient.getKlines(symbol, "15min", 10).getOrNull() ?: emptyList()
+        val m1 = bingXRestClient.getKlines(symbol, "1m", 30).getOrNull() ?: return null
+        val m5 = bingXRestClient.getKlines(symbol, "5m", 20).getOrNull() ?: emptyList()
+        val m15 = bingXRestClient.getKlines(symbol, "15m", 10).getOrNull() ?: emptyList()
         val bookTicker = bingXRestClient.getBookTicker(symbol).getOrNull()
         val premium = bingXRestClient.getPremiumIndex(symbol).getOrNull()
         val pair = pairDao.getEnabled().firstOrNull { it.symbol == symbol }

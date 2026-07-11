@@ -36,7 +36,7 @@ class MarketDetailViewModel(application: Application) : AndroidViewModel(applica
         loadedSymbol = symbol
         _chartState.value = ChartLoadState.Loading
         viewModelScope.launch {
-            locator.marketRepository.getKlinesForChart(symbol, "5min", 100)
+            locator.marketRepository.getKlinesForChart(symbol, "5m", 100)
                 .onSuccess { candles ->
                     _chartState.value = if (candles.isEmpty()) {
                         ChartLoadState.Error("BingX повернув порожній список свічок для $symbol")
