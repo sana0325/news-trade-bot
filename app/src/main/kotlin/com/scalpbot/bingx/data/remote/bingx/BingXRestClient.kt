@@ -145,7 +145,7 @@ class BingXRestClient(
             ensureTimeSynced()
             val (apiKey, apiSecret) = credentials()
             require(apiKey.isNotBlank() && apiSecret.isNotBlank()) { "BingX API ключі не задані для режиму ${mode()}" }
-            val query = BingXSigner.buildSignedQuery(encodedParams(params), apiSecret)
+            val query = BingXSigner.buildSignedQuery(paramsWithTimestamp(params), apiSecret, ::encode)
             val response = httpClient.get("${baseUrl()}$path?$query") { header("X-BX-APIKEY", apiKey) }
             unwrap(response)
         }
@@ -155,7 +155,7 @@ class BingXRestClient(
             ensureTimeSynced()
             val (apiKey, apiSecret) = credentials()
             require(apiKey.isNotBlank() && apiSecret.isNotBlank()) { "BingX API ключі не задані для режиму ${mode()}" }
-            val query = BingXSigner.buildSignedQuery(encodedParams(params), apiSecret)
+            val query = BingXSigner.buildSignedQuery(paramsWithTimestamp(params), apiSecret, ::encode)
             val response = httpClient.post("${baseUrl()}$path?$query") { header("X-BX-APIKEY", apiKey) }
             unwrap(response)
         }
@@ -163,15 +163,13 @@ class BingXRestClient(
     private suspend fun signedPut(path: String, params: Map<String, String>): Result<Unit> = runCatching {
         ensureTimeSynced()
         val (apiKey, apiSecret) = credentials()
-        val query = BingXSigner.buildSignedQuery(encodedParams(params), apiSecret)
+        val query = BingXSigner.buildSignedQuery(paramsWithTimestamp(params), apiSecret, ::encode)
         val response = httpClient.put("${baseUrl()}$path?$query") { header("X-BX-APIKEY", apiKey) }
         if (response.status == HttpStatusCode.TooManyRequests) throw BingXRateLimitException()
     }
 
-    private fun encodedParams(params: Map<String, String>): Map<String, String> {
-        val withTimestamp = params + mapOf("timestamp" to timestamp().toString())
-        return withTimestamp.mapValues { (_, v) -> encode(v) }
-    }
+    private fun paramsWithTimestamp(params: Map<String, String>): Map<String, String> =
+        params + mapOf("timestamp" to timestamp().toString())
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 

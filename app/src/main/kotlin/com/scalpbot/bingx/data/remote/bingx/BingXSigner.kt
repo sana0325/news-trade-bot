@@ -19,11 +19,20 @@ object BingXSigner {
         return bytes.joinToString(separator = "") { "%02x".format(it) }
     }
 
-    /** Повертає query-string з відсортованими параметрами і доданим signature. */
-    fun buildSignedQuery(params: Map<String, String>, secret: String): String {
-        val sorted = params.toSortedMap()
-        val base = sorted.entries.joinToString("&") { (k, v) -> "$k=$v" }
-        val signature = sign(secret, base)
-        return "$base&signature=$signature"
+    /**
+     * Підпис рахується над СИРими значеннями (без URL-кодування) — так BingX
+     * рахує його на своєму боці, розкодувавши query-string назад у сирі значення.
+     * Якщо підписати вже закодований рядок (напр. JSON у stopLoss/takeProfit з
+     * `{`, `"`, `:`), підпис не збігається з тим, що очікує сервер, і BingX
+     * повертає "Signature verification failed" — саме so сталось до цього фіксу.
+     * `encode` застосовується лише до значень у фінальному query-string, який
+     * реально йде по мережі; сам підпис від encode не залежить.
+     */
+    fun buildSignedQuery(rawParams: Map<String, String>, secret: String, encode: (String) -> String): String {
+        val sorted = rawParams.toSortedMap()
+        val rawBase = sorted.entries.joinToString("&") { (k, v) -> "$k=$v" }
+        val signature = sign(secret, rawBase)
+        val encodedBase = sorted.entries.joinToString("&") { (k, v) -> "$k=${encode(v)}" }
+        return "$encodedBase&signature=$signature"
     }
 }
