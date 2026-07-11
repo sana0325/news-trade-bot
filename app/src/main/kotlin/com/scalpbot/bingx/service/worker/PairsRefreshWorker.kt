@@ -34,9 +34,6 @@ class PairsRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
             AppLogger.w(TAG, "Не вдалось оновити список контрактів", it)
             return Result.retry()
         }
-        rest.getAllTickers24hRaw().onSuccess { raw ->
-            AppLogger.d(TAG, "RAW ticker JSON (перші 1500 символів): ${raw.take(1500)}")
-        }
 
         val tickers = rest.getAllTickers24h().getOrElse {
             AppLogger.w(TAG, "Не вдалось оновити 24h тикери", it)
@@ -47,10 +44,16 @@ class PairsRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
 
         val ranked = contracts
             // BingX contracts endpoint also lists non-crypto CFD-style instruments
-            // (gold/silver/index tokens like "NCCOGOLD2USD") that also settle in
-            // USDT but don't follow the "<COIN>-USDT" symbol convention — excluded
-            // explicitly, since currency == "USDT" alone isn't a strict enough filter.
-            .filter { it.currency == "USDT" && it.status == 1 && it.symbol.endsWith("-USDT") }
+            // (gold/silver/index/commodity tokens: NCCOGOLD2USD-USDT,
+            // NCSINASDAQ1002USD-USDT, NCCOXAG2USD-USDT, NCCO1OILWTI2USD-USDT...) that
+            // DO end in "-USDT" too and often report inflated notional volume (BTC-
+            // and ETH-tier), so the "-USDT" suffix alone doesn't exclude them. Every
+            // one of them observed so far shares the "NC" symbol prefix, which real
+            // crypto tickers don't use.
+            .filter {
+                it.currency == "USDT" && it.status == 1 &&
+                    it.symbol.endsWith("-USDT") && !it.symbol.startsWith("NC")
+            }
             .mapNotNull { contract ->
                 val ticker = tickers[contract.symbol] ?: return@mapNotNull null
                 contract to ticker
