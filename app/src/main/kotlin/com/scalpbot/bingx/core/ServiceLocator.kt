@@ -3,6 +3,9 @@ package com.scalpbot.bingx.core
 import android.content.Context
 import com.scalpbot.bingx.data.local.db.AppDatabase
 import com.scalpbot.bingx.data.local.prefs.SecureConfigStore
+import com.scalpbot.bingx.data.remote.NetworkClientFactory
+import com.scalpbot.bingx.data.remote.bingx.BingXRestClient
+import com.scalpbot.bingx.data.remote.bingx.BingXWebSocketClient
 
 /**
  * Ручний DI-контейнер. Проєкт одноосібний і не настільки великий, щоб
@@ -13,6 +16,10 @@ class ServiceLocator private constructor(context: Context) {
     val appContext: Context = context.applicationContext
     val database: AppDatabase by lazy { AppDatabase.getInstance(appContext) }
     val secureConfigStore: SecureConfigStore by lazy { SecureConfigStore(appContext) }
+
+    private val sharedHttpClient by lazy { NetworkClientFactory.create() }
+    val bingXRestClient: BingXRestClient by lazy { BingXRestClient(sharedHttpClient, secureConfigStore) }
+    val bingXWebSocketClient: BingXWebSocketClient by lazy { BingXWebSocketClient(sharedHttpClient) }
 
     companion object {
         @Volatile private var instance: ServiceLocator? = null
