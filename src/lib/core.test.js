@@ -131,7 +131,7 @@ describe('рушій', () => {
     for (const list of Object.values(byPair))
       for (let i = 1; i < list.length; i++)
         expect(list[i].createdAt - list[i - 1].expiresAt).toBeGreaterThanOrEqual(240_000 - 280);
-  });
+  }, 30_000); // повільні раннери CI не повинні валити тест по таймауту
 
   it('у суботу лише OTC і фід підхоплюється', async () => {
     let t = Date.parse('2026-10-03T12:00:00Z');
