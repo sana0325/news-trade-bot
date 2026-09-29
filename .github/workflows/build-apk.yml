@@ -41,6 +41,9 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Типовий пакет "tools" у нових SDK прибрали — sdkmanager падає на ньому.
+          packages: "platform-tools platforms;android-36"
 
       - name: Build debug APK
         working-directory: android
