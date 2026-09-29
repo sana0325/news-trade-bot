@@ -26,3 +26,18 @@ npm run build    # статичні файли в dist/
 Якщо фіду немає, OTC-пари працюють на симуляції.
 
 У браузері зберігаються лише: звук, фільтр сили і чи закрита перша підказка.
+
+## APK
+
+GitHub Actions (`.github/workflows/build-apk.yml`) на кожен пуш у `main` збирає debug-APK:
+тести → `npm run build` → `npx cap sync android` → `./gradlew assembleDebug`.
+Готовий файл — в артефакті `vektor-debug-apk` на сторінці запуску в Actions.
+
+Локально (потрібні JDK 21 і Android SDK):
+
+```bash
+npm run build && npx cap sync android
+cd android && ./gradlew assembleDebug
+```
+
+В APK OTC-фід Binarium іде напряму через CapacitorHttp, без проксі.

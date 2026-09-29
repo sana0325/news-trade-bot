@@ -1,0 +1,13 @@
+{
+  "appId": "com.vektor.signals",
+  "appName": "VEKTOR",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0b0f14"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

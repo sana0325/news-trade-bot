@@ -8,7 +8,11 @@ export const CANDLES_WINDOW_MS = 8 * 60_000; // вікно довше ~10 хв A
 export const QUOTES_WINDOW_MS = 90_000;
 const TIMEOUT_MS = 2000;
 
-const BASE = (import.meta.env?.VITE_BINARIUM_BASE ?? '/binarium').replace(/\/$/, '');
+// В APK (Capacitor) запити йдуть нативно через CapacitorHttp, CORS не заважає — ходимо напряму.
+const isNative = () => globalThis.Capacitor?.isNativePlatform?.() === true;
+const BASE = (
+  import.meta.env?.VITE_BINARIUM_BASE ?? (isNative() ? 'https://binarium.com' : '/binarium')
+).replace(/\/$/, '');
 
 export function candlesUrl(id, now) {
   const from = Math.floor((now - CANDLES_WINDOW_MS) / 1000);
