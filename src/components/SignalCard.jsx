@@ -1,6 +1,7 @@
 import { SIGNAL_MS } from '../lib/signal.js';
 import { fmtLeft, fmtPrice, dirWord, dirHint } from '../lib/format.js';
 import { Arrow } from './Icons.jsx';
+import { STRATEGY_LABEL } from '../lib/patterns.js';
 
 export default function SignalCard({ signal: s, now, price, digits, onOpen }) {
   const call = s.direction === 'call';
@@ -24,6 +25,8 @@ export default function SignalCard({ signal: s, now, price, digits, onOpen }) {
           {fmtLeft(left)}
         </div>
       </div>
+
+      <span className="strategy">{STRATEGY_LABEL[s.strategy]}</span>
 
       <div className="card-dir">
         <span className={`dir ${call ? 'up' : 'down'}`}>

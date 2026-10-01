@@ -92,15 +92,20 @@ export function buildReasons(votes, ev) {
   return out;
 }
 
-export function createSignal({ asset, votes, ev, price, now }) {
-  const call = ev.direction === 'call';
+// strategy: 'indicators' | 'level' | 'wedge'. Для патернів напрямок, впевненість,
+// причини і геометрія (pattern) приходять із patterns.js, голоси — для «за / проти».
+export function createSignal({ asset, votes, ev, price, now, strategy = 'indicators', direction, confidence, reasons, pattern = null }) {
+  const dir = direction ?? ev.direction;
+  const call = dir === 'call';
   return {
     id: `${asset.id}-${now}`,
     assetId: asset.id,
     symbol: asset.symbol,
-    direction: ev.direction,
+    strategy,
+    pattern,
+    direction: dir,
     tf: TF_SECONDS,
-    confidence: ev.confidence,
+    confidence: confidence ?? ev.confidence,
     agreement: call ? ev.buy : ev.sell,
     total: ev.total,
     maBuy: ev.maBuy,
@@ -108,7 +113,7 @@ export function createSignal({ asset, votes, ev, price, now }) {
     techBuy: ev.techBuy,
     techSell: ev.techSell,
     trendScore: ev.trendScore,
-    reasons: buildReasons(votes, ev),
+    reasons: reasons ?? buildReasons(votes, ev),
     entry: price,
     createdAt: now,
     expiresAt: now + SIGNAL_MS,

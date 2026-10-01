@@ -1,5 +1,7 @@
 import { emaSeries } from '../lib/indicators.js';
 import { kyivClock } from '../lib/session.js';
+import { CANDLE_MS } from '../lib/market.js';
+import { STRATEGY_LABEL } from '../lib/patterns.js';
 import { fmtPrice, fmtLeft, dirWord } from '../lib/format.js';
 
 const SHOW = 72;
@@ -25,6 +27,10 @@ export default function Chart({ asset, candles, signal, now }) {
   if (signal) {
     lo = Math.min(lo, signal.entry);
     hi = Math.max(hi, signal.entry);
+    if (signal.pattern?.type === 'level') {
+      lo = Math.min(lo, signal.pattern.price);
+      hi = Math.max(hi, signal.pattern.price);
+    }
   }
   const span = hi - lo || hi * 1e-4 || 1;
   lo -= span * 0.06;
@@ -43,6 +49,17 @@ export default function Chart({ asset, candles, signal, now }) {
     .filter(Boolean)
     .join(' L');
   const up = view.length > 1 && price >= view[view.length - 2].c;
+  // Межі клина: лінія від t0 до останньої свічки (обрізана по лівому краю графіка).
+  const t0View = view[0]?.t ?? 0;
+  const xt = (t) => x((t - t0View) / CANDLE_MS);
+  const wedgeLine = (ln) => {
+    const k = (ln.p1 - ln.p0) / (ln.t1 - ln.t0 || 1);
+    const ta = Math.max(ln.t0, t0View);
+    const tb = view[view.length - 1]?.t ?? ln.t1;
+    const at = (t) => ln.p0 + k * (t - ln.t0);
+    return { x1: xt(ta), y1: y(at(ta)), x2: xt(tb), y2: y(at(tb)) };
+  };
+  const pat = signal?.pattern;
   const times = view.map((c, i) => ({ i, t: c.t })).filter(({ t }) => t % 180_000 === 0);
 
   return (
@@ -55,7 +72,9 @@ export default function Chart({ asset, candles, signal, now }) {
       </div>
       {signal && (
         <p className={`chart-sig small ${signal.direction === 'call' ? 'up-text' : 'down-text'}`}>
-          Сигнал {dirWord(signal.direction)} · лишилось {fmtLeft(signal.expiresAt - now)} · пунктир — ціна входу
+          {STRATEGY_LABEL[signal.strategy]}: {dirWord(signal.direction)} · лишилось {fmtLeft(signal.expiresAt - now)} · пунктир — вхід
+          {pat?.type === 'level' && ', синя лінія — рівень'}
+          {pat?.type === 'wedge' && ', сині лінії — клин'}
         </p>
       )}
       <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Графік ${asset.symbol}, ціна ${fmtPrice(price, asset.digits)}`}>
@@ -89,6 +108,15 @@ export default function Chart({ asset, candles, signal, now }) {
           );
         })}
         {emaPath && <path d={`M${emaPath}`} className="ema" />}
+        {pat?.type === 'level' && (
+          <line x1={PAD.l} x2={W - PAD.r} y1={y(pat.price)} y2={y(pat.price)} className="pattern" />
+        )}
+        {pat?.type === 'wedge' && (
+          <>
+            <line {...wedgeLine(pat.upper)} className="pattern" />
+            <line {...wedgeLine(pat.lower)} className="pattern" />
+          </>
+        )}
         {signal && (
           <line x1={PAD.l} x2={W - PAD.r} y1={y(signal.entry)} y2={y(signal.entry)} className="entry" />
         )}

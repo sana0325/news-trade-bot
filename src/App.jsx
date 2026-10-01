@@ -6,6 +6,7 @@ import Header from './components/Header.jsx';
 import SessionBanner from './components/SessionBanner.jsx';
 import Hint from './components/Hint.jsx';
 import FilterBar from './components/FilterBar.jsx';
+import StrategyBar, { strategiesFor } from './components/StrategyBar.jsx';
 import SignalCard from './components/SignalCard.jsx';
 import PairList from './components/PairList.jsx';
 import Chart from './components/Chart.jsx';
@@ -22,6 +23,8 @@ export default function App() {
   const [snap, setSnap] = useState(() => engine.snapshot());
   const [sound, setSound] = useState(prefs.sound);
   const [filter, setFilter] = useState(prefs.filter);
+  // Вибір стратегії живе лише до перезавантаження: у браузері зберігаємо тільки звук, фільтр і підказку.
+  const [strategy, setStrategy] = useState('all');
   const [hintOpen, setHintOpen] = useState(() => !prefs.hintClosed());
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState(null);
@@ -32,6 +35,10 @@ export default function App() {
   useEffect(() => {
     engine.setFilter(filter);
   }, [engine, filter]);
+
+  useEffect(() => {
+    engine.setStrategies(strategiesFor(strategy));
+  }, [engine, strategy]);
 
   useEffect(() => {
     if (engine.mode === 'otc') setToast({ id: Date.now(), text: 'Бот перейшов на OTC' });
@@ -92,6 +99,7 @@ export default function App() {
         <div className="col">
           <SessionBanner session={snap.session} assets={assets} />
           {hintOpen && <Hint onClose={closeHint} />}
+          <StrategyBar value={strategy} onChange={setStrategy} />
           <FilterBar value={filter} onChange={changeFilter} />
 
           <section className="section" aria-live="polite">

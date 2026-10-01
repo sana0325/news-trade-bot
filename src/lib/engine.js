@@ -12,6 +12,7 @@ import {
   MIN_CONFIDENCE,
 } from './signal.js';
 import { fetchFeed as realFetchFeed, POLL_MS } from './binarium.js';
+import { detectLevelBounce, detectWedgeBreakout, patternConfidence, patternReasons } from './patterns.js';
 
 const FEED_STALE_MS = 10_000;
 const MAX_RESULTS = 8;
@@ -21,6 +22,7 @@ export class Engine {
     this.now = now;
     this.fetchFeed = fetchFeed;
     this.filter = MIN_CONFIDENCE;
+    this.strategies = new Set(['indicators', 'level', 'wedge']);
     this.signals = [];
     this.results = [];
     this.lastEnd = new Map(); // assetId → коли закрився останній сигнал
@@ -42,6 +44,7 @@ export class Engine {
         pending: false,
         closedT: null,
         closedEv: null,
+        patterns: [],
         votes: [],
         ev: null,
       });
@@ -56,6 +59,11 @@ export class Engine {
 
   emit(ev) {
     for (const fn of this.listeners) fn(ev);
+  }
+
+  // Які стратегії можуть давати нові сигнали. Активні сигнали доживають свої 5 хвилин.
+  setStrategies(list) {
+    this.strategies = new Set(list);
   }
 
   setFilter(value) {
@@ -135,7 +143,9 @@ export class Engine {
       const closedT = s.candles[s.candles.length - 2]?.t;
       if (closedT !== s.closedT) {
         s.closedT = closedT;
-        s.closedEv = evaluate(computeVotes(s.candles.slice(0, -1), digits));
+        const closed = s.candles.slice(0, -1);
+        s.closedEv = evaluate(computeVotes(closed, digits));
+        s.patterns = [detectLevelBounce(closed), detectWedgeBreakout(closed)].filter(Boolean);
       }
       if (allowSignals) this.maybeSignal(s, t);
     }
@@ -150,12 +160,53 @@ export class Engine {
 
   maybeSignal(s, t) {
     if (!this.canSignal(s, t)) return;
-    const { ev, closedEv } = s;
-    if (!closedEv || !isStrong(ev, this.filter) || !isStrong(closedEv, this.filter)) return;
-    if (ev.direction !== closedEv.direction) return;
-    const sig = createSignal({ asset: s.asset, votes: s.votes, ev, price: s.price, now: t });
+    // Патерн живе одну свічку, а сильний стан індикаторів триває довше — тому патерн першим.
+    const sig = this.patternSignal(s, t) ?? this.indicatorSignal(s, t);
+    if (!sig) return;
     this.signals.push(sig);
     this.emit({ type: 'signal', signal: sig });
+  }
+
+  indicatorSignal(s, t) {
+    if (!this.strategies.has('indicators')) return null;
+    const { ev, closedEv } = s;
+    if (!closedEv || !isStrong(ev, this.filter) || !isStrong(closedEv, this.filter)) return null;
+    if (ev.direction !== closedEv.direction) return null;
+    return createSignal({ asset: s.asset, votes: s.votes, ev, price: s.price, now: t });
+  }
+
+  // Відбиття від рівня і пробій клина. Патерн знайдено на закритій свічці,
+  // а поточна ціна має ще стояти по правильний бік рівня / межі клина.
+  patternSignal(s, t) {
+    for (const p of s.patterns) {
+      if (!this.strategies.has(p.strategy)) continue;
+      const call = p.direction === 'call';
+      const confidence = patternConfidence(p, s.closedEv);
+      if (confidence < this.filter) continue;
+      if (p.strategy === 'level') {
+        if (call ? s.price <= p.level : s.price >= p.level) continue;
+      } else {
+        const edge = call ? p.lines.upper.p1 : p.lines.lower.p1;
+        if (call ? s.price <= edge : s.price >= edge) continue;
+        const diff = s.ev.buy - s.ev.sell;
+        if (call ? diff <= -12 : diff >= 12) continue; // індикатори рішуче проти пробою
+      }
+      const pattern =
+        p.strategy === 'level' ? { type: 'level', price: p.level } : { type: 'wedge', ...p.lines, kind: p.kind };
+      return createSignal({
+        asset: s.asset,
+        votes: s.votes,
+        ev: s.ev,
+        price: s.price,
+        now: t,
+        strategy: p.strategy,
+        direction: p.direction,
+        confidence,
+        reasons: patternReasons(p, s.closedEv, s.asset.digits),
+        pattern,
+      });
+    }
+    return null;
   }
 
   poll() {
