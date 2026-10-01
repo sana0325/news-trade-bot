@@ -24,10 +24,9 @@
 
         </activity>
 
-        <!-- Фонова служба: Android не заморожує бота, поки він стежить за ринком. -->
-        <receiver android:name="io.capawesome.capacitorjs.plugins.foregroundservice.NotificationActionBroadcastReceiver" />
+        <!-- Фонова служба VEKTOR: ціни Twelve Data і свічки збираються тут, окремо від WebView. -->
         <service
-            android:name="io.capawesome.capacitorjs.plugins.foregroundservice.AndroidForegroundService"
+            android:name=".FeedService"
             android:foregroundServiceType="specialUse"
             android:exported="false">
             <property
@@ -53,4 +52,5 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

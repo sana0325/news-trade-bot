@@ -413,4 +413,40 @@ describe('Twelve Data', () => {
     expect(res.ok).toEqual(['EUR/USD']);
     e.stop();
   });
+
+  it('свічки від нативної служби: беремо новіші або довші, старі ігноруємо', () => {
+    let t = Date.parse('2026-09-29T10:00:00Z');
+    const { f, create } = fakeFeed();
+    const e = new Engine({ now: () => t, createSpotFeed: create });
+    for (let i = 0; i < 20; i++) {
+      t += 1000;
+      f.onPrice('EUR/USD', 1.17);
+      e.tick();
+    }
+    const mine = e.candles('eurusd').length;
+    const native = Array.from({ length: 60 }, (_, i) => ({ t: Math.floor(t / 15000) * 15000 - (59 - i) * 15000, o: 1.17, h: 1.171, l: 1.169, c: 1.1705 }));
+    e.restoreSpotCandles({ 'EUR/USD': native });
+    expect(e.candles('eurusd')).toHaveLength(60);
+    expect(e.priceOf('eurusd')).toBe(1.1705);
+    expect(mine).toBeLessThan(60);
+    // Застарілі (перерва понад 2 хв) — не беремо.
+    const old = native.map((c) => ({ ...c, t: c.t - 10 * 60_000 }));
+    e.restoreSpotCandles({ 'EUR/USD': old.slice(0, 70) });
+    expect(e.candles('eurusd').at(-1).t).toBe(native.at(-1).t);
+  });
+
+  it('пульс служби тікає рушій, лише якщо власний таймер мовчить', () => {
+    let t = Date.parse('2026-09-29T10:00:00Z');
+    const { create } = fakeFeed();
+    const e = new Engine({ now: () => t, createSpotFeed: create });
+    let ticks = 0;
+    e.subscribe((ev) => ev.type === 'tick' && ticks++);
+    e.tick();
+    t += 300;
+    e.tickIfStale(800);
+    expect(ticks).toBe(1);
+    t += 600;
+    e.tickIfStale(800);
+    expect(ticks).toBe(2);
+  });
 });

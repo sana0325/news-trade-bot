@@ -17,13 +17,26 @@ import FeedKey from './components/FeedKey.jsx';
 import { MAX_ACTIVE } from './lib/signal.js';
 import { OTC_ASSETS, spotAssetsFor, pairNames } from './lib/assets.js';
 import PairPicker from './components/PairPicker.jsx';
-import { startBackground, updateBackground, notifySignal, notifyResult } from './lib/native.js';
+import {
+  isNative,
+  startBackground,
+  updateBackground,
+  notifySignal,
+  notifyResult,
+  createNativeSpotFeed,
+  nativeCandles,
+  onNativeTick,
+  batteryUnrestricted,
+  requestBatteryUnrestricted,
+} from './lib/native.js';
 
 export default function App() {
   const engineRef = useRef(null);
   engineRef.current ??= new Engine({
     assets: [...spotAssetsFor(prefs.spotPairs()), ...OTC_ASSETS],
     savedCandles: prefs.spotCandles(),
+    // В APK ціни Twelve Data тримає нативна служба — вона не засинає разом з WebView.
+    createSpotFeed: isNative() ? createNativeSpotFeed : undefined,
   });
   const engine = engineRef.current;
 
@@ -37,6 +50,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [twelveKey, setTwelveKey] = useState(prefs.twelveKey);
   const [spotPairs, setSpotPairs] = useState(() => engine.spotSymbols());
+  const [batteryOk, setBatteryOk] = useState(true);
 
   const soundRef = useRef(sound);
   soundRef.current = sound;
@@ -83,8 +97,19 @@ export default function App() {
     const onHide = () => document.visibilityState === 'hidden' && save();
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', save);
+    // Свічки, які служба назбирала, поки WebView спав, — одразу при старті й поверненні.
+    const resync = async () => {
+      engine.restoreSpotCandles(await nativeCandles());
+      setBatteryOk(await batteryUnrestricted());
+    };
+    resync();
+    const onShow = () => document.visibilityState === 'visible' && resync();
+    document.addEventListener('visibilitychange', onShow);
+    const offTick = onNativeTick(() => engine.tickIfStale(800));
     return () => {
       off();
+      offTick();
+      document.removeEventListener('visibilitychange', onShow);
       save();
       engine.stop();
       clearInterval(saver);
@@ -142,6 +167,18 @@ export default function App() {
       <main className="layout">
         <div className="col">
           <SessionBanner session={snap.session} assets={assets} names={pairNames(spotPairs)} />
+          {!batteryOk && (
+            <section className="section battery">
+              <div className="feed-row">
+                <p className="small picker-text">
+                  Android обмежує VEKTOR у фоні. Дозвольте роботу без обмежень батареї, щоб бот не вимикався.
+                </p>
+                <button type="button" className="chip" onClick={requestBatteryUnrestricted}>
+                  Дозволити
+                </button>
+              </div>
+            </section>
+          )}
           {!otc && <FeedKey value={twelveKey} status={snap.spotFeed} names={pairNames(spotPairs)} onSave={saveKey} />}
           {!otc && twelveKey && (
             <PairPicker
