@@ -68,6 +68,9 @@ export class Engine {
     this.spotFeed = createSpotFeed({
       symbols: spot.map((a) => a.tdSymbol),
       onPrice: (symbol, price) => this.applySpotPrice(symbol, price, this.now()),
+      onUnavailable: (symbols) => {
+        for (const x of this.state.values()) if (x.asset.tdSymbol) x.unavailable = symbols.includes(x.asset.tdSymbol);
+      },
       onStatus: (status, message) => {
         this.spotStatus = { status, message };
       },
@@ -335,6 +338,7 @@ export class Engine {
           change: s.price != null && ref != null ? s.price - ref : 0,
           live: this.feedLive(s, t),
           warmup: { have: Math.min(c.length, WARMUP_CANDLES), need: WARMUP_CANDLES },
+          unavailable: !!s.unavailable,
           ev: s.ev,
         };
       }),

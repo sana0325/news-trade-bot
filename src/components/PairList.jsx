@@ -35,8 +35,10 @@ export default function PairList({ assets, signals, selected, onSelect }) {
                 <span className={`lean tnum ${lean >= 8 ? 'up-text' : lean <= -8 ? 'down-text' : 'muted'}`}>
                   {ev
                     ? `${ev.buy}/${ev.sell}`
-                    : a.price == null
-                      ? 'немає цін'
+                    : a.unavailable
+                      ? 'тариф не дає'
+                      : a.price == null
+                        ? 'немає цін'
                       : `розігрів ${a.warmup.have}/${a.warmup.need}`}
                 </span>
               </span>

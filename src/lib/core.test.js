@@ -287,4 +287,53 @@ describe('Twelve Data', () => {
     expect(socks).toHaveLength(2);
     feed.stop();
   });
+
+  it('тариф дає лише частину пар: ключ не відкидаємо, недоступну пару позначаємо', () => {
+    const socks = [];
+    class FakeWS {
+      constructor(url) {
+        this.url = url;
+        socks.push(this);
+      }
+      send() {}
+      close() {}
+    }
+    const statuses = [];
+    let unavailable = null;
+    const feed = new TwelveDataFeed({
+      symbols: ['EUR/USD', 'GBP/USD'],
+      onPrice: () => {},
+      onStatus: (st, msg) => statuses.push([st, msg]),
+      onUnavailable: (list) => (unavailable = list),
+      WebSocketImpl: FakeWS,
+    });
+    feed.setKey('k1\nk2');
+    feed.start();
+    socks[0].onmessage({
+      data: JSON.stringify({
+        event: 'subscribe-status',
+        status: 'error',
+        success: [{ symbol: 'EUR/USD' }],
+        fails: [{ symbol: 'GBP/USD' }],
+      }),
+    });
+    expect(socks).toHaveLength(1); // на другий ключ не перейшли
+    expect(unavailable).toEqual(['GBP/USD']);
+    socks[0].onmessage({ data: JSON.stringify({ event: 'price', symbol: 'EUR/USD', price: 1.17 }) });
+    expect(statuses.at(-1)).toEqual(['live', 'ключ 1 з 2 · тариф не дає: GBP/USD']);
+    feed.stop();
+  });
+
+  it('рушій показує пару, яку тариф не дає', () => {
+    const t = Date.parse('2026-09-29T10:00:00Z');
+    let opts;
+    const e = new Engine({
+      now: () => t,
+      createSpotFeed: (o) => ((opts = o), { setKey() {}, start() {}, stop() {} }),
+    });
+    opts.onUnavailable(['GBP/USD']);
+    const [eur, gbp] = e.snapshot().assets;
+    expect(eur.unavailable).toBe(false);
+    expect(gbp.unavailable).toBe(true);
+  });
 });
