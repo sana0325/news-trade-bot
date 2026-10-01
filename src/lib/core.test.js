@@ -167,12 +167,12 @@ describe('Twelve Data', () => {
     return { f, create };
   };
 
-  it('у будні лише EUR/USD і GBP/USD, без симуляції: до перших цін історії немає', () => {
+  it('у будні лише EUR/USD і USD/JPY, без симуляції: до перших цін історії немає', () => {
     const t = Date.parse('2026-09-29T10:00:00Z');
     const { create } = fakeFeed();
     const e = new Engine({ now: () => t, createSpotFeed: create });
     const snap = e.snapshot();
-    expect(snap.assets.map((a) => a.symbol)).toEqual(['EUR/USD', 'GBP/USD']);
+    expect(snap.assets.map((a) => a.symbol)).toEqual(['EUR/USD', 'USD/JPY']);
     expect(snap.assets.every((a) => a.price == null && !a.live && a.ev == null)).toBe(true);
     expect(e.candles('eurusd')).toEqual([]);
   });
@@ -331,9 +331,9 @@ describe('Twelve Data', () => {
       now: () => t,
       createSpotFeed: (o) => ((opts = o), { setKey() {}, start() {}, stop() {} }),
     });
-    opts.onUnavailable(['GBP/USD']);
-    const [eur, gbp] = e.snapshot().assets;
+    opts.onUnavailable(['USD/JPY']);
+    const [eur, jpy] = e.snapshot().assets;
     expect(eur.unavailable).toBe(false);
-    expect(gbp.unavailable).toBe(true);
+    expect(jpy.unavailable).toBe(true);
   });
 });

@@ -13,7 +13,7 @@ export class TwelveDataFeed {
     this.onPrice = onPrice;
     this.onStatus = onStatus;
     this.onUnavailable = onUnavailable;
-    this.note = ''; // напр. «тариф не дає: GBP/USD», коли решта пар працює
+    this.note = ''; // напр. «тариф не дає: USD/JPY», коли решта пар працює
     this.WS = WebSocketImpl;
     this.keys = [];
     this.keyIndex = 0;

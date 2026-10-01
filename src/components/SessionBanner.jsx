@@ -1,4 +1,5 @@
 import { kyivDateTime } from '../lib/session.js';
+import { SPOT_NAMES } from '../lib/assets.js';
 
 export default function SessionBanner({ session, assets }) {
   const otc = session.mode === 'otc';
@@ -10,7 +11,7 @@ export default function SessionBanner({ session, assets }) {
       <div className="banner-sub">
         {otc
           ? 'Вихідні: форекс закритий, звичайні пари не торгуються. Лише OTC.'
-          : 'Будні: EUR/USD і GBP/USD за справжніми цінами Twelve Data.'}
+          : `Будні: ${SPOT_NAMES} за справжніми цінами Twelve Data.`}
       </div>
       {otc && (
         <div className="banner-sub">
