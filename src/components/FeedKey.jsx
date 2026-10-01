@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { parseKeys } from '../lib/twelvedata.js';
-import { SPOT_NAMES } from '../lib/assets.js';
 
 const STATUS = {
   nokey: 'ключ не вставлено',
@@ -19,7 +18,7 @@ const keysWord = (n) => {
   return 'ключів';
 };
 
-export default function FeedKey({ value, status, onSave }) {
+export default function FeedKey({ value, status, names, onSave }) {
   const [open, setOpen] = useState(!value);
   const [draft, setDraft] = useState(value);
   const save = (e) => {
@@ -33,7 +32,7 @@ export default function FeedKey({ value, status, onSave }) {
     <section className="section feed">
       <div className="feed-row">
         <div>
-          <div className="feed-title">Ціни {SPOT_NAMES}: Twelve Data</div>
+          <div className="feed-title">Ціни {names}: Twelve Data</div>
           <div className={`small feed-status feed-${st}`}>
             {STATUS[st]}
             {status?.message ? ` · ${status.message}` : ''}

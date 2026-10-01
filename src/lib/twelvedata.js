@@ -22,6 +22,12 @@ export class TwelveDataFeed {
     this.wanted = false;
   }
 
+  // Інший набір пар — перепідключаємось із новою підпискою.
+  setSymbols(symbols) {
+    this.symbols = symbols;
+    if (this.wanted) this.connect();
+  }
+
   setStatus(status, message = '') {
     this.status = status;
     this.onStatus?.(status, message);
@@ -146,4 +152,63 @@ export function parseKeys(text) {
     .split(/[\s,;"']+/)
     .map((k) => k.trim())
     .filter((k) => k && !seen.has(k) && seen.add(k));
+}
+
+// Перевірка, які пари дає тариф: окреме тимчасове з'єднання, підписка пачками по 8,
+// Twelve Data відповідає subscribe-status зі списками success / fails.
+export async function probePairs({ key, symbols, WebSocketImpl = globalThis.WebSocket, batch = 8, timeoutMs = 8000, onProgress }) {
+  const ok = [];
+  const fail = [];
+  let error = '';
+  for (let i = 0; i < symbols.length; i += batch) {
+    const part = symbols.slice(i, i + batch);
+    const res = await probeBatch({ key, symbols: part, WebSocketImpl, timeoutMs });
+    if (res.error && !res.ok.length && !res.fail.length) {
+      error = res.error;
+      break;
+    }
+    ok.push(...res.ok);
+    // Що не прийшло ні в success, ні в fails — вважаємо недоступним.
+    fail.push(...part.filter((s) => !res.ok.includes(s)));
+    onProgress?.(Math.min(i + batch, symbols.length), symbols.length);
+  }
+  return { ok, fail, error };
+}
+
+function probeBatch({ key, symbols, WebSocketImpl, timeoutMs }) {
+  return new Promise((resolve) => {
+    let done = false;
+    let ws;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        ws.onclose = null;
+        ws.close();
+      } catch {
+        /* вже закрите */
+      }
+      resolve(r);
+    };
+    const timer = setTimeout(() => finish({ ok: [], fail: [], error: 'Twelve Data не відповів' }), timeoutMs);
+    try {
+      ws = new WebSocketImpl(`${WS_URL}?apikey=${encodeURIComponent(key)}`);
+    } catch {
+      return finish({ ok: [], fail: [], error: 'WebSocket недоступний' });
+    }
+    ws.onopen = () => ws.send(JSON.stringify({ action: 'subscribe', params: { symbols: symbols.join(',') } }));
+    ws.onclose = () => finish({ ok: [], fail: [], error: "з'єднання закрилось" });
+    ws.onmessage = (e) => {
+      let m;
+      try {
+        m = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      const sym = (list) => (list || []).map((f) => f.symbol ?? f).filter(Boolean);
+      if (m.event === 'subscribe-status') finish({ ok: sym(m.success), fail: sym(m.fails), error: '' });
+      else if (m.status === 'error' || m.event === 'error') finish({ ok: [], fail: [], error: m.message || 'помилка Twelve Data' });
+    };
+  });
 }

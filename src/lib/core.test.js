@@ -4,8 +4,8 @@ import { evaluate, isStrong, resolveSignal, createSignal, SIGNAL_MS } from './si
 import { isForexOpen, nextSessionChange, kyivDateTime } from './session.js';
 import { parseCandles, parseLastQuote, toBars } from './binarium.js';
 import { Engine } from './engine.js';
-import { OTC_ASSETS } from './assets.js';
-import { TwelveDataFeed, parseKeys } from './twelvedata.js';
+import { OTC_ASSETS, spotAssetsFor } from './assets.js';
+import { TwelveDataFeed, parseKeys, probePairs } from './twelvedata.js';
 
 const series = (step, n = 128) =>
   Array.from({ length: n }, (_, i) => {
@@ -159,7 +159,11 @@ describe('Twelve Data', () => {
     const create = (opts) => {
       Object.assign(f, opts);
       return {
+        get key() {
+          return f.key;
+        },
         setKey: (k) => (f.key = k),
+        setSymbols: (list) => (f.symbols = list),
         start: () => (f.started = true),
         stop: () => (f.started = false),
       };
@@ -167,12 +171,12 @@ describe('Twelve Data', () => {
     return { f, create };
   };
 
-  it('у будні лише EUR/USD і USD/JPY, без симуляції: до перших цін історії немає', () => {
+  it('у будні за замовчуванням лише EUR/USD, без симуляції: до перших цін історії немає', () => {
     const t = Date.parse('2026-09-29T10:00:00Z');
     const { create } = fakeFeed();
     const e = new Engine({ now: () => t, createSpotFeed: create });
     const snap = e.snapshot();
-    expect(snap.assets.map((a) => a.symbol)).toEqual(['EUR/USD', 'USD/JPY']);
+    expect(snap.assets.map((a) => a.symbol)).toEqual(['EUR/USD']);
     expect(snap.assets.every((a) => a.price == null && !a.live && a.ev == null)).toBe(true);
     expect(e.candles('eurusd')).toEqual([]);
   });
@@ -329,11 +333,84 @@ describe('Twelve Data', () => {
     let opts;
     const e = new Engine({
       now: () => t,
-      createSpotFeed: (o) => ((opts = o), { setKey() {}, start() {}, stop() {} }),
+      createSpotFeed: (o) => ((opts = o), { setKey() {}, setSymbols() {}, start() {}, stop() {} }),
     });
+    e.setSpotPairs(spotAssetsFor(['EUR/USD', 'USD/JPY']));
     opts.onUnavailable(['USD/JPY']);
     const [eur, jpy] = e.snapshot().assets;
     expect(eur.unavailable).toBe(false);
     expect(jpy.unavailable).toBe(true);
+  });
+
+  it('зміна набору пар: стара історія лишається, нова пара з нуля, фід підписується заново', () => {
+    let t = Date.parse('2026-09-29T10:00:00Z');
+    const { f, create } = fakeFeed();
+    const e = new Engine({ now: () => t, createSpotFeed: create });
+    for (let i = 0; i < 100; i++) {
+      t += 280;
+      f.onPrice('EUR/USD', 1.17 + i * 1e-5);
+      e.tick();
+    }
+    const had = e.candles('eurusd').length;
+    e.setSpotPairs(spotAssetsFor(['EUR/USD', 'AUD/USD']));
+    expect(f.symbols).toEqual(['EUR/USD', 'AUD/USD']);
+    expect(e.candles('eurusd').length).toBe(had);
+    expect(e.candles('audusd')).toEqual([]);
+    e.setSpotPairs(spotAssetsFor(['AUD/USD']));
+    expect(e.snapshot().assets.map((a) => a.symbol)).toEqual(['AUD/USD']);
+  });
+
+  it('збережені свічки: коротка перерва — продовжуємо, довга — розігрів наново', () => {
+    const t = Date.parse('2026-09-29T10:00:00Z');
+    const candles = Array.from({ length: 60 }, (_, i) => ({ t: t - (60 - i) * 15000, o: 1.17, h: 1.171, l: 1.169, c: 1.17 }));
+    const { create } = fakeFeed();
+    const fresh = new Engine({ now: () => t, createSpotFeed: create, savedCandles: { 'EUR/USD': candles } });
+    expect(fresh.candles('eurusd')).toHaveLength(60);
+    expect(fresh.snapshot().assets[0].warmup.have).toBe(52);
+    const stale = new Engine({ now: () => t + 5 * 60_000, createSpotFeed: create, savedCandles: { 'EUR/USD': candles } });
+    expect(stale.candles('eurusd')).toEqual([]);
+  });
+
+  it('перевірка пар: пачки по 8, збирає success і fails', async () => {
+    const batches = [];
+    class FakeWS {
+      constructor(url) {
+        this.url = url;
+        setTimeout(() => this.onopen(), 0);
+      }
+      send(m) {
+        const list = JSON.parse(m).params.symbols.split(',');
+        batches.push(list);
+        const success = list.filter((x) => x === 'EUR/USD' || x === 'AUD/JPY').map((symbol) => ({ symbol }));
+        const fails = list.filter((x) => x !== 'EUR/USD' && x !== 'AUD/JPY').map((symbol) => ({ symbol }));
+        setTimeout(() => this.onmessage({ data: JSON.stringify({ event: 'subscribe-status', status: 'error', success, fails }) }), 0);
+      }
+      close() {}
+    }
+    const symbols = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP', 'EUR/JPY', 'AUD/JPY'];
+    const res = await probePairs({ key: 'k', symbols, WebSocketImpl: FakeWS });
+    expect(batches.map((b) => b.length)).toEqual([8, 2]);
+    expect(res.ok).toEqual(['EUR/USD', 'AUD/JPY']);
+    expect(res.fail).toHaveLength(8);
+    expect(res.error).toBe('');
+  });
+
+  it('рушій ставить основний фід на паузу під час перевірки', async () => {
+    const t = Date.parse('2026-09-29T10:00:00Z');
+    const { f, create } = fakeFeed();
+    let startedDuring = null;
+    const e = new Engine({
+      now: () => t,
+      createSpotFeed: create,
+      probe: async () => ((startedDuring = f.started), { ok: ['EUR/USD'], fail: [], error: '' }),
+    });
+    expect((await e.probePairs(['EUR/USD'])).error).toBe('спершу вставте ключ');
+    e.setTwelveDataKey('k');
+    e.start();
+    const res = await e.probePairs(['EUR/USD']);
+    expect(startedDuring).toBe(false);
+    expect(f.started).toBe(true);
+    expect(res.ok).toEqual(['EUR/USD']);
+    e.stop();
   });
 });
