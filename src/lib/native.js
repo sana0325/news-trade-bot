@@ -1,24 +1,24 @@
-// Android (APK): сповіщення про сигнали і фонова служба, щоб система не заморожувала бота.
-// У браузері всі функції нічого не роблять.
-import { Capacitor } from '@capacitor/core';
+// Android (APK): нативна фонова служба VektorFeed (android/.../FeedService.java) збирає ціни
+// Twelve Data і свічки окремо від WebView, тримає постійне сповіщення і щосекунди будить
+// рушій сигналів. Тут же — сповіщення про сигнали. У браузері все це нічого не робить.
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { ForegroundService } from '@capawesome-team/capacitor-android-foreground-service';
 import { RESULT_TEXT } from './signal.js';
 import { STRATEGY_LABEL } from './patterns.js';
 import { dirWord, dirHint, fmtPrice } from './format.js';
+import { parseKeys } from './twelvedata.js';
 
 const ICON = 'ic_stat_vektor';
 const SIGNALS_CHANNEL = 'signals';
-const SERVICE_CHANNEL = 'service';
-const SERVICE_ID = 1;
+
+const VektorFeed = registerPlugin('VektorFeed');
 
 export const isNative = () => Capacitor.isNativePlatform();
 
-let serviceOn = false;
-let lastBody = '';
+let lastText = '';
 let nextId = 100;
 
-// Дозвіл на сповіщення, канали і фонова служба. Безпечно викликати кілька разів.
+// Дозвіл на сповіщення, канал сигналів і запуск фонової служби.
 export async function startBackground() {
   if (!isNative()) return;
   try {
@@ -31,49 +31,90 @@ export async function startBackground() {
       visibility: 1,
       vibration: true,
     });
-    await ForegroundService.createNotificationChannel({
-      id: SERVICE_CHANNEL,
-      name: 'Робота у фоні',
-      description: 'Постійне сповіщення, поки бот стежить за ринком',
-      importance: 2,
-    });
-    await updateBackground('Стежу за ринком');
   } catch (e) {
-    console.warn('VEKTOR: фонова робота недоступна', e);
+    console.warn('VEKTOR: сповіщення недоступні', e);
   }
+  await updateBackground('Стежу за ринком');
 }
 
-// Текст постійного сповіщення фонової служби (оновлюємо лише коли він змінився).
-export async function updateBackground(body) {
-  if (!isNative() || (serviceOn && body === lastBody)) return;
-  lastBody = body;
-  const opts = {
-    id: SERVICE_ID,
-    title: 'VEKTOR працює у фоні',
-    body,
-    smallIcon: ICON,
-    notificationChannelId: SERVICE_CHANNEL,
-    silent: true,
-  };
+// Текст постійного сповіщення (служба стартує, якщо ще не запущена).
+export async function updateBackground(text) {
+  if (!isNative() || text === lastText) return;
+  lastText = text;
   try {
-    if (serviceOn) await ForegroundService.updateForegroundService(opts);
-    else {
-      await ForegroundService.startForegroundService(opts);
-      serviceOn = true;
-    }
+    await VektorFeed.setText({ text });
   } catch (e) {
     console.warn('VEKTOR: фонова служба', e);
   }
 }
 
-export async function stopBackground() {
-  if (!isNative() || !serviceOn) return;
-  serviceOn = false;
+// Фід Twelve Data для рушія: той самий інтерфейс, що й TwelveDataFeed, але працює в службі.
+export function createNativeSpotFeed({ symbols, onPrice, onStatus, onUnavailable }) {
+  let keysText = '';
+  let syms = symbols;
+  let enabled = false;
+  VektorFeed.addListener('price', (e) => onPrice(e.symbol, e.price, e.t));
+  VektorFeed.addListener('status', (e) => {
+    onStatus(e.status, e.message);
+    onUnavailable?.(e.unavailable || []);
+  });
+  const push = () => VektorFeed.configure({ keys: keysText, symbols: syms, enabled }).catch(() => {});
+  return {
+    get key() {
+      return parseKeys(keysText)[0] ?? '';
+    },
+    setKey(text) {
+      keysText = text || '';
+      push();
+    },
+    setSymbols(list) {
+      syms = list;
+      push();
+    },
+    start() {
+      enabled = true;
+      push();
+    },
+    stop() {
+      enabled = false;
+      push();
+    },
+  };
+}
+
+// Свічки, які служба назбирала (і поки WebView спав): { 'EUR/USD': [{t,o,h,l,c}, ...] }.
+export async function nativeCandles() {
+  if (!isNative()) return {};
   try {
-    await ForegroundService.stopForegroundService();
+    const { candles } = await VektorFeed.getCandles();
+    const out = {};
+    for (const [sym, list] of Object.entries(candles || {})) {
+      out[sym] = list.map(([t, o, h, l, c]) => ({ t, o, h, l, c }));
+    }
+    return out;
   } catch {
-    /* вже зупинена */
+    return {};
   }
+}
+
+// Пульс зі служби щосекунди — рушій працює, навіть коли таймери сторінки пригальмовані.
+export function onNativeTick(fn) {
+  if (!isNative()) return () => {};
+  const h = VektorFeed.addListener('tick', fn);
+  return () => h.then((x) => x.remove());
+}
+
+export async function batteryUnrestricted() {
+  if (!isNative()) return true;
+  try {
+    return (await VektorFeed.batteryStatus()).ignoring;
+  } catch {
+    return true;
+  }
+}
+
+export function requestBatteryUnrestricted() {
+  if (isNative()) VektorFeed.requestBattery().catch(() => {});
 }
 
 async function notify(title, body) {

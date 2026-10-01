@@ -552,6 +552,10 @@ h2 {
   outline-offset: 1px;
 }
 
+.battery {
+  border-color: rgba(245, 179, 1, 0.5);
+}
+
 /* Вибір пар */
 .picker-text {
   margin: 0 0 10px;

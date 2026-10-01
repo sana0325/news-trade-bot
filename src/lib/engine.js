@@ -198,8 +198,32 @@ export class Engine {
     return s.candles.length >= WARMUP_CANDLES;
   }
 
+  // Пульс від нативної служби: тікаємо, лише якщо власний таймер давно не спрацьовував.
+  tickIfStale(ms = 800) {
+    if (this.now() - (this.lastTick ?? 0) >= ms) this.tick();
+  }
+
+  // Свічки від нативної служби (зібрані, поки WebView спав). Беремо їх, якщо вони новіші
+  // або довші за наші — так після повернення в застосунок розігрів не починається наново.
+  restoreSpotCandles(map) {
+    const t = this.now();
+    for (const s of this.state.values()) {
+      if (s.source !== 'twelvedata') continue;
+      const list = map[s.asset.tdSymbol];
+      const last = list?.[list.length - 1];
+      if (!last || t - last.t > SPOT_GAP_RESET_MS) continue;
+      const mine = s.candles[s.candles.length - 1];
+      if (mine && mine.t > last.t) continue;
+      if (mine && mine.t === last.t && s.candles.length >= list.length) continue;
+      s.candles = list.slice(-MAX_CANDLES).map((c) => ({ ...c }));
+      s.price = last.c;
+      s.closedT = null; // перерахувати закриту свічку
+    }
+  }
+
   tick() {
     const t = this.now();
+    this.lastTick = t;
     const session = sessionInfo(t);
     if (session.mode !== this.session.mode) {
       this.session = session;
