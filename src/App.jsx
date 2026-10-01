@@ -13,6 +13,7 @@ import Chart from './components/Chart.jsx';
 import Votes from './components/Votes.jsx';
 import Results from './components/Results.jsx';
 import Toast from './components/Toast.jsx';
+import FeedKey from './components/FeedKey.jsx';
 import { MAX_ACTIVE } from './lib/signal.js';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
   const [hintOpen, setHintOpen] = useState(() => !prefs.hintClosed());
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState(null);
+  const [twelveKey, setTwelveKey] = useState(prefs.twelveKey);
 
   const soundRef = useRef(sound);
   soundRef.current = sound;
@@ -35,6 +37,10 @@ export default function App() {
   useEffect(() => {
     engine.setFilter(filter);
   }, [engine, filter]);
+
+  useEffect(() => {
+    engine.setTwelveDataKey(twelveKey);
+  }, [engine, twelveKey]);
 
   useEffect(() => {
     engine.setStrategies(strategiesFor(strategy));
@@ -82,6 +88,11 @@ export default function App() {
     setFilter(v);
   };
 
+  const saveKey = (key) => {
+    prefs.setTwelveKey(key);
+    setTwelveKey(key);
+  };
+
   const closeHint = () => {
     prefs.closeHint();
     setHintOpen(false);
@@ -98,6 +109,7 @@ export default function App() {
       <main className="layout">
         <div className="col">
           <SessionBanner session={snap.session} assets={assets} />
+          {!otc && <FeedKey value={twelveKey} status={snap.spotFeed} onSave={saveKey} />}
           {hintOpen && <Hint onClose={closeHint} />}
           <StrategyBar value={strategy} onChange={setStrategy} />
           <FilterBar value={filter} onChange={changeFilter} />
@@ -148,7 +160,7 @@ export default function App() {
             </>
           )}
           <p className="disclaimer">
-            Сигнали — розрахунок індикаторів, не фінансова порада. Спот-пари — симуляція, не біржа.
+            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни EUR/USD і GBP/USD — Twelve Data.
           </p>
         </div>
       </main>

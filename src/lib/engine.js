@@ -12,13 +12,25 @@ import {
   MIN_CONFIDENCE,
 } from './signal.js';
 import { fetchFeed as realFetchFeed, POLL_MS } from './binarium.js';
+import { TwelveDataFeed } from './twelvedata.js';
 import { detectLevelBounce, detectWedgeBreakout, patternConfidence, patternReasons } from './patterns.js';
 
 const FEED_STALE_MS = 10_000;
+const SPOT_STALE_MS = 30_000; // форекс може кілька секунд не тікати — це ще не обрив
+const SPOT_GAP_RESET_MS = 120_000; // після довшої перерви історія вже не суцільна — розігрів наново
+export const WARMUP_CANDLES = 52; // SMA / EMA 50 + закрита свічка
+
+const defaultSpotFeed = (opts) => new TwelveDataFeed(opts);
 const MAX_RESULTS = 8;
 
 export class Engine {
-  constructor({ now = Date.now, rand = Math.random, fetchFeed = realFetchFeed, assets = ALL_ASSETS } = {}) {
+  constructor({
+    now = Date.now,
+    rand = Math.random,
+    fetchFeed = realFetchFeed,
+    assets = ALL_ASSETS,
+    createSpotFeed = defaultSpotFeed,
+  } = {}) {
     this.now = now;
     this.fetchFeed = fetchFeed;
     this.filter = MIN_CONFIDENCE;
@@ -31,14 +43,16 @@ export class Engine {
     this.session = sessionInfo(t);
     this.state = new Map();
     for (const asset of assets) {
-      const walker = createWalker(asset, rand);
-      const candles = buildHistory(walker, t);
+      // Спот-пари Twelve Data починають з порожньої історії: лише справжні ціни, без симуляції.
+      const real = asset.feed === 'twelvedata';
+      const walker = real ? null : createWalker(asset, rand);
+      const candles = real ? [] : buildHistory(walker, t);
       this.state.set(asset.id, {
         asset,
         walker,
         candles,
-        price: walker.price,
-        source: 'sim',
+        price: real ? null : walker.price,
+        source: real ? 'twelvedata' : 'sim',
         feedAt: 0,
         feedSynced: false,
         pending: false,
@@ -49,7 +63,35 @@ export class Engine {
         ev: null,
       });
     }
+    this.spotStatus = { status: 'nokey', message: '' };
+    const spot = assets.filter((a) => a.feed === 'twelvedata');
+    this.spotFeed = createSpotFeed({
+      symbols: spot.map((a) => a.tdSymbol),
+      onPrice: (symbol, price) => this.applySpotPrice(symbol, price, this.now()),
+      onStatus: (status, message) => {
+        this.spotStatus = { status, message };
+      },
+    });
     this.evaluateAll(t, false);
+  }
+
+  setTwelveDataKey(key) {
+    this.spotFeed.setKey(key);
+  }
+
+  syncSpotFeed() {
+    if (this.timer && this.mode === 'spot') this.spotFeed.start();
+    else this.spotFeed.stop();
+  }
+
+  applySpotPrice(symbol, price, t) {
+    const s = [...this.state.values()].find((x) => x.asset.tdSymbol === symbol);
+    if (!s) return;
+    const last = s.candles[s.candles.length - 1];
+    if (last && t - last.t > SPOT_GAP_RESET_MS) s.candles.length = 0;
+    s.price = price;
+    s.feedAt = t;
+    pushPrice(s.candles, t, price);
   }
 
   subscribe(fn) {
@@ -75,12 +117,14 @@ export class Engine {
     this.timer = setInterval(() => this.tick(), TICK_MS);
     this.poller = setInterval(() => this.poll(), POLL_MS);
     this.poll();
+    this.syncSpotFeed();
   }
 
   stop() {
     clearInterval(this.timer);
     clearInterval(this.poller);
     this.timer = this.poller = null;
+    this.syncSpotFeed();
   }
 
   get mode() {
@@ -92,7 +136,12 @@ export class Engine {
   }
 
   feedLive(s, t) {
+    if (s.source === 'twelvedata') return s.price != null && t - s.feedAt < SPOT_STALE_MS;
     return s.source === 'feed' && t - s.feedAt < FEED_STALE_MS;
+  }
+
+  warm(s) {
+    return s.candles.length >= WARMUP_CANDLES;
   }
 
   tick() {
@@ -100,11 +149,15 @@ export class Engine {
     const session = sessionInfo(t);
     if (session.mode !== this.session.mode) {
       this.session = session;
+      this.syncSpotFeed();
       this.emit({ type: 'mode', mode: session.mode });
     } else this.session = session;
 
     for (const s of this.state.values()) {
-      if (this.feedLive(s, t)) {
+      if (s.source === 'twelvedata') {
+        // Між тіками свічка триває з останньою ціною; без фіду — стоїть.
+        if (this.feedLive(s, t)) pushPrice(s.candles, t, s.price);
+      } else if (this.feedLive(s, t)) {
         pushPrice(s.candles, t, s.price);
       } else {
         if (s.source === 'feed') s.source = 'sim'; // фіду немає — лишаємо симуляцію
@@ -137,6 +190,13 @@ export class Engine {
   evaluateAll(t, allowSignals) {
     for (const s of this.visibleAssets()) {
       const { digits } = s.asset;
+      if (!this.warm(s)) {
+        s.votes = [];
+        s.ev = null;
+        s.closedEv = null;
+        s.patterns = [];
+        continue;
+      }
       s.votes = computeVotes(s.candles, digits);
       s.ev = evaluate(s.votes);
       // Закрита свічка теж має бути сильною — так відсікаємо короткі імпульси.
@@ -152,6 +212,7 @@ export class Engine {
   }
 
   canSignal(s, t) {
+    if (s.source === 'twelvedata' && !this.feedLive(s, t)) return false; // ціни не йдуть — сигналів немає
     if (this.signals.length >= MAX_ACTIVE) return false;
     if (this.signals.some((x) => x.assetId === s.asset.id)) return false;
     const end = this.lastEnd.get(s.asset.id);
@@ -264,14 +325,16 @@ export class Engine {
     return {
       now: t,
       session: this.session,
+      spotFeed: this.spotStatus,
       assets: this.visibleAssets().map((s) => {
         const c = s.candles;
-        const ref = c[Math.max(0, c.length - 21)].c; // ~5 хв тому
+        const ref = c.length ? c[Math.max(0, c.length - 21)].c : null; // ~5 хв тому
         return {
           ...s.asset,
           price: s.price,
-          change: s.price - ref,
+          change: s.price != null && ref != null ? s.price - ref : 0,
           live: this.feedLive(s, t),
+          warmup: { have: Math.min(c.length, WARMUP_CANDLES), need: WARMUP_CANDLES },
           ev: s.ev,
         };
       }),

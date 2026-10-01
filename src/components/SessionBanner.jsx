@@ -10,7 +10,7 @@ export default function SessionBanner({ session, assets }) {
       <div className="banner-sub">
         {otc
           ? 'Вихідні: форекс закритий, звичайні пари не торгуються. Лише OTC.'
-          : 'Будні: сигнали по спот-парах (симуляція, не біржа).'}
+          : 'Будні: EUR/USD і GBP/USD за справжніми цінами Twelve Data.'}
       </div>
       {otc && (
         <div className="banner-sub">
