@@ -15,11 +15,16 @@ import Results from './components/Results.jsx';
 import Toast from './components/Toast.jsx';
 import FeedKey from './components/FeedKey.jsx';
 import { MAX_ACTIVE } from './lib/signal.js';
-import { SPOT_NAMES } from './lib/assets.js';
+import { OTC_ASSETS, spotAssetsFor, pairNames } from './lib/assets.js';
+import PairPicker from './components/PairPicker.jsx';
+import { startBackground, updateBackground, notifySignal, notifyResult } from './lib/native.js';
 
 export default function App() {
   const engineRef = useRef(null);
-  engineRef.current ??= new Engine();
+  engineRef.current ??= new Engine({
+    assets: [...spotAssetsFor(prefs.spotPairs()), ...OTC_ASSETS],
+    savedCandles: prefs.spotCandles(),
+  });
   const engine = engineRef.current;
 
   const [snap, setSnap] = useState(() => engine.snapshot());
@@ -31,6 +36,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState(null);
   const [twelveKey, setTwelveKey] = useState(prefs.twelveKey);
+  const [spotPairs, setSpotPairs] = useState(() => engine.spotSymbols());
 
   const soundRef = useRef(sound);
   soundRef.current = sound;
@@ -50,9 +56,16 @@ export default function App() {
   useEffect(() => {
     if (engine.mode === 'otc') setToast({ id: Date.now(), text: 'Бот перейшов на OTC' });
     const off = engine.subscribe((ev) => {
-      if (ev.type === 'tick') setSnap(engine.snapshot());
-      else if (ev.type === 'signal') {
+      if (ev.type === 'tick') {
+        const snap = engine.snapshot();
+        setSnap(snap);
+        updateBackground(backgroundText(snap));
+      } else if (ev.type === 'signal') {
         if (soundRef.current) playChime(ev.signal.direction);
+        // Коли застосунок згорнутий або екран вимкнено — сповіщення Android.
+        if (document.visibilityState === 'hidden') notifySignal(ev.signal);
+      } else if (ev.type === 'result') {
+        if (document.visibilityState === 'hidden') notifyResult(ev.signal, engine.asset(ev.signal.assetId)?.digits ?? 5);
       } else if (ev.type === 'mode') {
         setToast({
           id: Date.now(),
@@ -61,12 +74,23 @@ export default function App() {
       }
     });
     engine.start();
+    startBackground();
     const unlock = () => unlockAudio();
     window.addEventListener('pointerdown', unlock);
+    // Свічки спот-пар — на пристрій: раз на свічку і коли застосунок ховається.
+    const save = () => prefs.setSpotCandles(engine.spotCandles());
+    const saver = setInterval(save, 15_000);
+    const onHide = () => document.visibilityState === 'hidden' && save();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', save);
     return () => {
       off();
+      save();
       engine.stop();
+      clearInterval(saver);
       window.removeEventListener('pointerdown', unlock);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', save);
     };
   }, [engine]);
 
@@ -94,6 +118,14 @@ export default function App() {
     setTwelveKey(key);
   };
 
+  const applyPairs = (symbols) => {
+    engine.setSpotPairs(spotAssetsFor(symbols));
+    const now = engine.spotSymbols();
+    prefs.setSpotPairs(now);
+    setSpotPairs(now);
+    setSnap(engine.snapshot());
+  };
+
   const closeHint = () => {
     prefs.closeHint();
     setHintOpen(false);
@@ -109,8 +141,16 @@ export default function App() {
       <Header otc={otc} now={snap.now} sound={sound} onSound={toggleSound} />
       <main className="layout">
         <div className="col">
-          <SessionBanner session={snap.session} assets={assets} />
-          {!otc && <FeedKey value={twelveKey} status={snap.spotFeed} onSave={saveKey} />}
+          <SessionBanner session={snap.session} assets={assets} names={pairNames(spotPairs)} />
+          {!otc && <FeedKey value={twelveKey} status={snap.spotFeed} names={pairNames(spotPairs)} onSave={saveKey} />}
+          {!otc && twelveKey && (
+            <PairPicker
+              key={spotPairs.join()}
+              selected={spotPairs}
+              onProbe={(symbols, onProgress) => engine.probePairs(symbols, onProgress)}
+              onApply={applyPairs}
+            />
+          )}
           {hintOpen && <Hint onClose={closeHint} />}
           <StrategyBar value={strategy} onChange={setStrategy} />
           <FilterBar value={filter} onChange={changeFilter} />
@@ -161,11 +201,22 @@ export default function App() {
             </>
           )}
           <p className="disclaimer">
-            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни {SPOT_NAMES} — Twelve Data.
+            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни {pairNames(spotPairs)} — Twelve Data.
           </p>
         </div>
       </main>
       {toast && <Toast key={toast.id} text={toast.text} onDone={() => setToast(null)} />}
     </>
   );
+}
+
+// Текст постійного сповіщення фонової служби.
+function backgroundText(snap) {
+  const n = snap.signals.length;
+  const active = n ? `Активних сигналів: ${n}` : 'Чекаю сильний сигнал';
+  if (snap.session.mode === 'otc') return `${active} · OTC`;
+  const feed = { live: 'ціни йдуть', connecting: 'підключаюсь', nokey: 'немає ключа', error: 'помилка фіду' }[
+    snap.spotFeed?.status
+  ];
+  return feed ? `${active} · ${feed}` : active;
 }

@@ -552,6 +552,57 @@ h2 {
   outline-offset: 1px;
 }
 
+/* Вибір пар */
+.picker-text {
+  margin: 0 0 10px;
+}
+.picker {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.picker-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex: none;
+}
+.picker-sym {
+  font-weight: 700;
+  font-size: 14px;
+  flex: 1;
+}
+.picker-off {
+  opacity: 0.5;
+  cursor: default;
+}
+.picker-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+}
+.picker-actions .chip {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Пари */
 .pairs {
   display: grid;

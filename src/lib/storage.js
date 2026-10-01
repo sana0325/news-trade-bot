@@ -1,6 +1,14 @@
-// На пристрої зберігаємо лише: звук, фільтр сили, чи закрита перша підказка
-// і ключ Twelve Data (щоб не вводити його щоразу; у коді й на GitHub його немає).
-const KEYS = { sound: 'vektor.sound', filter: 'vektor.filter', hint: 'vektor.hintClosed', twelve: 'vektor.twelveKey' };
+// На пристрої зберігаємо лише: звук, фільтр сили, чи закрита перша підказка,
+// ключі Twelve Data (у коді й на GitHub їх немає), обрані пари і свічки спот-пар
+// (щоб після короткого перезапуску не чекати розігріву заново).
+const KEYS = {
+  sound: 'vektor.sound',
+  filter: 'vektor.filter',
+  hint: 'vektor.hintClosed',
+  twelve: 'vektor.twelveKey',
+  pairs: 'vektor.spotPairs',
+  candles: 'vektor.spotCandles',
+};
 
 function read(key, fallback) {
   try {
@@ -34,4 +42,14 @@ export const prefs = {
     return typeof v === 'string' ? v : '';
   },
   setTwelveKey: (v) => write(KEYS.twelve, v),
+  spotPairs: () => {
+    const v = read(KEYS.pairs, null);
+    return Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : ['EUR/USD'];
+  },
+  setSpotPairs: (v) => write(KEYS.pairs, v),
+  spotCandles: () => {
+    const v = read(KEYS.candles, {});
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  },
+  setSpotCandles: (v) => write(KEYS.candles, v),
 };

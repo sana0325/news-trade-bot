@@ -12,7 +12,7 @@ import {
   MIN_CONFIDENCE,
 } from './signal.js';
 import { fetchFeed as realFetchFeed, POLL_MS } from './binarium.js';
-import { TwelveDataFeed } from './twelvedata.js';
+import { TwelveDataFeed, probePairs as realProbe } from './twelvedata.js';
 import { detectLevelBounce, detectWedgeBreakout, patternConfidence, patternReasons } from './patterns.js';
 
 const FEED_STALE_MS = 10_000;
@@ -30,8 +30,13 @@ export class Engine {
     fetchFeed = realFetchFeed,
     assets = ALL_ASSETS,
     createSpotFeed = defaultSpotFeed,
+    savedCandles = {}, // { 'EUR/USD': [...] } — свічки з минулого запуску
+    probe = realProbe,
   } = {}) {
     this.now = now;
+    this.rand = rand;
+    this.probeImpl = probe;
+    this.savedCandles = savedCandles;
     this.fetchFeed = fetchFeed;
     this.filter = MIN_CONFIDENCE;
     this.strategies = new Set(['indicators', 'level', 'wedge']);
@@ -42,31 +47,10 @@ export class Engine {
     const t = now();
     this.session = sessionInfo(t);
     this.state = new Map();
-    for (const asset of assets) {
-      // Спот-пари Twelve Data починають з порожньої історії: лише справжні ціни, без симуляції.
-      const real = asset.feed === 'twelvedata';
-      const walker = real ? null : createWalker(asset, rand);
-      const candles = real ? [] : buildHistory(walker, t);
-      this.state.set(asset.id, {
-        asset,
-        walker,
-        candles,
-        price: real ? null : walker.price,
-        source: real ? 'twelvedata' : 'sim',
-        feedAt: 0,
-        feedSynced: false,
-        pending: false,
-        closedT: null,
-        closedEv: null,
-        patterns: [],
-        votes: [],
-        ev: null,
-      });
-    }
+    for (const asset of assets) this.state.set(asset.id, this.makeState(asset, t));
     this.spotStatus = { status: 'nokey', message: '' };
-    const spot = assets.filter((a) => a.feed === 'twelvedata');
     this.spotFeed = createSpotFeed({
-      symbols: spot.map((a) => a.tdSymbol),
+      symbols: this.spotSymbols(),
       onPrice: (symbol, price) => this.applySpotPrice(symbol, price, this.now()),
       onUnavailable: (symbols) => {
         for (const x of this.state.values()) if (x.asset.tdSymbol) x.unavailable = symbols.includes(x.asset.tdSymbol);
@@ -76,6 +60,73 @@ export class Engine {
       },
     });
     this.evaluateAll(t, false);
+  }
+
+  makeState(asset, t) {
+    // Спот-пари Twelve Data: лише справжні ціни, без симуляції. Історію беремо зі збережених
+    // свічок, якщо перерва була коротка; інакше — порожньо і розігрів.
+    const real = asset.feed === 'twelvedata';
+    const walker = real ? null : createWalker(asset, this.rand);
+    let candles = [];
+    if (real) {
+      const saved = this.savedCandles[asset.tdSymbol];
+      const last = saved?.[saved.length - 1];
+      if (last && t - last.t <= SPOT_GAP_RESET_MS) candles = saved.slice(-MAX_CANDLES).map((c) => ({ ...c }));
+    } else candles = buildHistory(walker, t);
+    return {
+      asset,
+      walker,
+      candles,
+      price: real ? (candles[candles.length - 1]?.c ?? null) : walker.price,
+      source: real ? 'twelvedata' : 'sim',
+      feedAt: 0,
+      feedSynced: false,
+      pending: false,
+      closedT: null,
+      closedEv: null,
+      patterns: [],
+      votes: [],
+      ev: null,
+    };
+  }
+
+  spotSymbols() {
+    return [...this.state.values()].filter((s) => s.source === 'twelvedata').map((s) => s.asset.tdSymbol);
+  }
+
+  // Новий набір спот-пар. Незмінені пари зберігають історію; сигнали прибраних пар знімаються.
+  setSpotPairs(assets) {
+    const t = this.now();
+    const keep = new Set(assets.map((a) => a.id));
+    for (const [id, s] of this.state) {
+      if (s.source === 'twelvedata' && !keep.has(id)) {
+        this.savedCandles[s.asset.tdSymbol] = s.candles;
+        this.state.delete(id);
+      }
+    }
+    this.signals = this.signals.filter((sig) => this.state.has(sig.assetId));
+    for (const a of assets) if (!this.state.has(a.id)) this.state.set(a.id, this.makeState(a, t));
+    this.spotFeed.setSymbols(this.spotSymbols());
+  }
+
+  // Свічки спот-пар для збереження на пристрої.
+  spotCandles() {
+    const out = {};
+    for (const s of this.state.values()) if (s.source === 'twelvedata' && s.candles.length) out[s.asset.tdSymbol] = s.candles;
+    return out;
+  }
+
+  // Перевірка, які пари дає тариф. На час перевірки основний фід на паузі,
+  // щоб не перевищити ліміт пробних символів на ключ.
+  async probePairs(symbols, onProgress) {
+    const key = this.spotFeed.key;
+    if (!key) return { ok: [], fail: [], error: 'спершу вставте ключ' };
+    this.spotFeed.stop();
+    try {
+      return await this.probeImpl({ key, symbols, onProgress });
+    } finally {
+      this.syncSpotFeed();
+    }
   }
 
   setTwelveDataKey(key) {
