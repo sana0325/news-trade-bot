@@ -5,7 +5,7 @@ import { isForexOpen, nextSessionChange, kyivDateTime } from './session.js';
 import { parseCandles, parseLastQuote, toBars } from './binarium.js';
 import { Engine } from './engine.js';
 import { OTC_ASSETS } from './assets.js';
-import { TwelveDataFeed } from './twelvedata.js';
+import { TwelveDataFeed, parseKeys } from './twelvedata.js';
 
 const series = (step, n = 128) =>
   Array.from({ length: n }, (_, i) => {
@@ -253,6 +253,38 @@ describe('Twelve Data', () => {
     expect(statuses.at(-1)[0]).toBe('live');
     sock.onmessage({ data: JSON.stringify({ event: 'subscribe-status', status: 'error', fails: [{ symbol: 'GBP/USD' }] }) });
     expect(statuses.at(-1)).toEqual(['error', 'тариф не дає: GBP/USD']);
+    feed.stop();
+  });
+
+  it('кілька ключів: працює перший, при відмові бере наступний', () => {
+    const socks = [];
+    class FakeWS {
+      constructor(url) {
+        this.url = url;
+        socks.push(this);
+      }
+      send() {}
+      close() {}
+    }
+    const statuses = [];
+    const feed = new TwelveDataFeed({
+      symbols: ['EUR/USD'],
+      onPrice: () => {},
+      onStatus: (st, msg) => statuses.push([st, msg]),
+      WebSocketImpl: FakeWS,
+    });
+    expect(parseKeys('"aaa",\n "bbb"\nccc aaa')).toEqual(['aaa', 'bbb', 'ccc']);
+    feed.setKey('aaa\nbbb\nccc');
+    feed.start();
+    expect(socks).toHaveLength(1);
+    expect(socks[0].url).toContain('apikey=aaa');
+    socks[0].onmessage({ data: JSON.stringify({ status: 'error', message: 'invalid api key' }) });
+    expect(socks.at(-1).url).toContain('apikey=bbb');
+    expect(statuses.some(([st, msg]) => st === 'error' && msg.includes('ключ 1 з 3'))).toBe(true);
+    // Другий ключ працює — залишаємось на ньому, третій не чіпаємо.
+    socks.at(-1).onmessage({ data: JSON.stringify({ event: 'price', symbol: 'EUR/USD', price: 1.17 }) });
+    expect(statuses.at(-1)).toEqual(['live', 'ключ 2 з 3']);
+    expect(socks).toHaveLength(2);
     feed.stop();
   });
 });
