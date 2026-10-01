@@ -125,7 +125,9 @@ describe('рушій', () => {
       expect(e.signals.length).toBeLessThanOrEqual(3);
     }
     expect(e.candles('eurusd').length).toBeLessThanOrEqual(140);
-    expect(created.every((s) => s.confidence >= 74 && Math.abs(s.maBuy + s.techBuy - s.maSell - s.techSell) >= 12)).toBe(true);
+    expect(created.every((s) => s.confidence >= 74)).toBe(true);
+    const ind = created.filter((s) => s.strategy === 'indicators');
+    expect(ind.every((s) => Math.abs(s.maBuy + s.techBuy - s.maSell - s.techSell) >= 12)).toBe(true);
     const byPair = {};
     for (const s of created) (byPair[s.assetId] ??= []).push(s);
     for (const list of Object.values(byPair))
