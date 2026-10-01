@@ -9,9 +9,10 @@ const spot = (symbol, base, digits) => ({
 });
 
 // Лише дві пари зі справжніми цінами Twelve Data (WebSocket). Симуляції для них немає.
+// GBP/USD прибрано: пробний WebSocket безкоштовного тарифу її не дає.
 export const SPOT_ASSETS = [
   { ...spot('EUR/USD', 1.17, 5), feed: 'twelvedata', tdSymbol: 'EUR/USD' },
-  { ...spot('GBP/USD', 1.345, 5), feed: 'twelvedata', tdSymbol: 'GBP/USD' },
+  { ...spot('USD/JPY', 147.5, 3), feed: 'twelvedata', tdSymbol: 'USD/JPY' },
 ];
 
 // OTC — публічний графік Binarium (id активу, назва у фіді).
@@ -21,3 +22,6 @@ export const OTC_ASSETS = [
 ];
 
 export const ALL_ASSETS = [...SPOT_ASSETS, ...OTC_ASSETS];
+
+// «EUR/USD і USD/JPY» — для текстів в інтерфейсі.
+export const SPOT_NAMES = SPOT_ASSETS.map((a) => a.symbol).join(' і ');

@@ -8,10 +8,12 @@ const RETRY_MAX_MS = 60_000;
 
 // status: 'nokey' | 'connecting' | 'live' | 'error'
 export class TwelveDataFeed {
-  constructor({ symbols, onPrice, onStatus, WebSocketImpl = globalThis.WebSocket }) {
+  constructor({ symbols, onPrice, onStatus, onUnavailable, WebSocketImpl = globalThis.WebSocket }) {
     this.symbols = symbols;
     this.onPrice = onPrice;
     this.onStatus = onStatus;
+    this.onUnavailable = onUnavailable;
+    this.note = ''; // напр. «тариф не дає: USD/JPY», коли решта пар працює
     this.WS = WebSocketImpl;
     this.keys = [];
     this.keyIndex = 0;
@@ -23,6 +25,16 @@ export class TwelveDataFeed {
   setStatus(status, message = '') {
     this.status = status;
     this.onStatus?.(status, message);
+  }
+
+  // Статус з номером ключа і приміткою про недоступні пари.
+  info(...parts) {
+    return [...parts, this.keyLabel(), this.note].filter(Boolean).join(' · ');
+  }
+
+  setUnavailable(symbols) {
+    this.note = symbols.length ? `тариф не дає: ${symbols.join(', ')}` : '';
+    this.onUnavailable?.(symbols);
   }
 
   get key() {
@@ -80,7 +92,8 @@ export class TwelveDataFeed {
     this.close();
     if (!this.key) return this.setStatus('nokey');
     if (!this.WS) return this.setStatus('error', 'WebSocket недоступний');
-    this.setStatus('connecting', this.keyLabel());
+    this.setUnavailable([]);
+    this.setStatus('connecting', this.info());
     const ws = new this.WS(`${WS_URL}?apikey=${encodeURIComponent(this.key)}`);
     this.ws = ws;
     ws.onopen = () => {
@@ -91,7 +104,7 @@ export class TwelveDataFeed {
     ws.onclose = () => {
       clearInterval(this.heartbeat);
       if (!this.wanted) return;
-      if (this.status !== 'error') this.setStatus('connecting', ['перепідключення…', this.keyLabel()].filter(Boolean).join(' · '));
+      if (this.status !== 'error') this.setStatus('connecting', this.info('перепідключення…'));
       this.retry = setTimeout(() => this.connect(), this.retryMs);
       this.retryMs = Math.min(this.retryMs * 2, RETRY_MAX_MS);
     };
@@ -107,15 +120,20 @@ export class TwelveDataFeed {
     if (m.event === 'price') {
       const price = Number(m.price);
       if (!Number.isFinite(price)) return;
-      if (this.status !== 'live') this.setStatus('live', this.keyLabel());
+      if (this.status !== 'live') this.setStatus('live', this.info());
       this.retryMs = RETRY_MIN_MS;
       const t = Number(m.timestamp);
       this.onPrice(m.symbol, price, Number.isFinite(t) ? t * 1000 : null);
     } else if (m.event === 'subscribe-status') {
       const fails = (m.fails || []).map((f) => f.symbol ?? f).filter(Boolean);
-      if (m.status !== 'ok' || fails.length) {
+      const ok = (m.success || []).map((f) => f.symbol ?? f).filter(Boolean);
+      // Ключ відмовив, лише якщо не дав жодної пари. Частина пар — працюємо з тим, що є.
+      if (!ok.length && (m.status !== 'ok' || fails.length)) {
         this.failKey(fails.length ? `тариф не дає: ${fails.join(', ')}` : m.message || 'підписка не вдалась');
-      } else if (this.status !== 'live') this.setStatus('connecting', ['чекаю першу ціну…', this.keyLabel()].filter(Boolean).join(' · '));
+        return;
+      }
+      this.setUnavailable(fails);
+      this.setStatus(this.status === 'live' ? 'live' : 'connecting', this.status === 'live' ? this.info() : this.info('чекаю першу ціну…'));
     } else if (m.status === 'error' || m.event === 'error') {
       this.failKey(m.message || 'помилка Twelve Data');
     }

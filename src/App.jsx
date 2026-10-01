@@ -15,6 +15,7 @@ import Results from './components/Results.jsx';
 import Toast from './components/Toast.jsx';
 import FeedKey from './components/FeedKey.jsx';
 import { MAX_ACTIVE } from './lib/signal.js';
+import { SPOT_NAMES } from './lib/assets.js';
 
 export default function App() {
   const engineRef = useRef(null);
@@ -160,7 +161,7 @@ export default function App() {
             </>
           )}
           <p className="disclaimer">
-            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни EUR/USD і GBP/USD — Twelve Data.
+            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни {SPOT_NAMES} — Twelve Data.
           </p>
         </div>
       </main>
