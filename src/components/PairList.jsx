@@ -23,6 +23,7 @@ export default function PairList({ assets, signals, selected, onSelect }) {
               <span className="pair-row">
                 <span className="pair-name">{a.symbol}</span>
                 {sig && <span className={`badge ${sig.direction === 'call' ? 'up' : 'down'}`}>сигнал</span>}
+                {a.market === 'spot' && !sig && !a.live && <span className="src">офлайн</span>}
                 {a.market === 'otc' && !sig && (
                   <span className={`src ${a.live ? 'src-live' : ''}`}>{a.live ? 'фід' : 'сим.'}</span>
                 )}
@@ -32,7 +33,11 @@ export default function PairList({ assets, signals, selected, onSelect }) {
                   {fmtPrice(a.price, a.digits)}
                 </span>
                 <span className={`lean tnum ${lean >= 8 ? 'up-text' : lean <= -8 ? 'down-text' : 'muted'}`}>
-                  {ev ? `${ev.buy}/${ev.sell}` : '—'}
+                  {ev
+                    ? `${ev.buy}/${ev.sell}`
+                    : a.price == null
+                      ? 'немає цін'
+                      : `розігрів ${a.warmup.have}/${a.warmup.need}`}
                 </span>
               </span>
             </button>

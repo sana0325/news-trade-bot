@@ -62,12 +62,25 @@ export default function Chart({ asset, candles, signal, now }) {
   const pat = signal?.pattern;
   const times = view.map((c, i) => ({ i, t: c.t })).filter(({ t }) => t % 180_000 === 0);
 
+  if (view.length < 2) {
+    return (
+      <section className="section" id="chart">
+        <div className="section-head">
+          <h2>{asset.symbol}</h2>
+        </div>
+        <div className="empty">
+          <p>{asset.price == null ? 'Чекаю перші ціни…' : 'Збираю свічки…'}</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="section" id="chart">
       <div className="section-head">
         <h2>{asset.symbol}</h2>
         <span className="muted small">
-          свічки 15 с · EMA {EMA_N} · {asset.market === 'otc' ? (asset.live ? 'фід Binarium' : 'симуляція') : 'симуляція'}
+          свічки 15 с · EMA {EMA_N} · {asset.market === 'spot' ? 'Twelve Data' : asset.live ? 'фід Binarium' : 'симуляція'}
         </span>
       </div>
       {signal && (

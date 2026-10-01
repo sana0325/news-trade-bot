@@ -500,6 +500,58 @@ h2 {
   padding: 6px 14px;
 }
 
+/* Ключ і статус фіду */
+.feed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.feed-title {
+  font-weight: 700;
+}
+.feed-status {
+  color: var(--muted);
+}
+.feed-live {
+  color: var(--up);
+}
+.feed-error {
+  color: var(--down);
+}
+.feed-row .chip {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+.feed-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.feed-form p {
+  margin: 0;
+}
+.feed-input {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.feed-keys {
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  -webkit-text-security: disc;
+}
+.feed-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Пари */
 .pairs {
   display: grid;

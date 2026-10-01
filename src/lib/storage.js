@@ -1,5 +1,6 @@
-// У браузері зберігаємо лише: звук, фільтр сили, чи закрита перша підказка.
-const KEYS = { sound: 'vektor.sound', filter: 'vektor.filter', hint: 'vektor.hintClosed' };
+// На пристрої зберігаємо лише: звук, фільтр сили, чи закрита перша підказка
+// і ключ Twelve Data (щоб не вводити його щоразу; у коді й на GitHub його немає).
+const KEYS = { sound: 'vektor.sound', filter: 'vektor.filter', hint: 'vektor.hintClosed', twelve: 'vektor.twelveKey' };
 
 function read(key, fallback) {
   try {
@@ -28,4 +29,9 @@ export const prefs = {
   setFilter: (v) => write(KEYS.filter, v),
   hintClosed: () => read(KEYS.hint, false) === true,
   closeHint: () => write(KEYS.hint, true),
+  twelveKey: () => {
+    const v = read(KEYS.twelve, '');
+    return typeof v === 'string' ? v : '';
+  },
+  setTwelveKey: (v) => write(KEYS.twelve, v),
 };

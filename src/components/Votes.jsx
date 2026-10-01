@@ -37,6 +37,7 @@ export default function Votes({ votes, ev, symbol }) {
           За вгору {ev.buy}, за вниз {ev.sell}, нейтрально {ev.neutral} з {ev.total}
         </p>
       )}
+      {!ev && <p className="muted small">Голоси з'являться, коли назбирається {'≥'} 52 свічки по 15 с (~13 хв живих цін).</p>}
       <div className="vgroups">
         <Group title="Середні" items={votes.filter((v) => v.group === 'ma')} />
         <Group title="Осцилятори" items={votes.filter((v) => v.group === 'osc')} />
