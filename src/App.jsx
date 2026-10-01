@@ -17,6 +17,7 @@ import FeedKey from './components/FeedKey.jsx';
 import { MAX_ACTIVE } from './lib/signal.js';
 import { OTC_ASSETS, spotAssetsFor, pairNames } from './lib/assets.js';
 import PairPicker from './components/PairPicker.jsx';
+import { startBackground, updateBackground, notifySignal, notifyResult } from './lib/native.js';
 
 export default function App() {
   const engineRef = useRef(null);
@@ -55,9 +56,16 @@ export default function App() {
   useEffect(() => {
     if (engine.mode === 'otc') setToast({ id: Date.now(), text: 'Бот перейшов на OTC' });
     const off = engine.subscribe((ev) => {
-      if (ev.type === 'tick') setSnap(engine.snapshot());
-      else if (ev.type === 'signal') {
+      if (ev.type === 'tick') {
+        const snap = engine.snapshot();
+        setSnap(snap);
+        updateBackground(backgroundText(snap));
+      } else if (ev.type === 'signal') {
         if (soundRef.current) playChime(ev.signal.direction);
+        // Коли застосунок згорнутий або екран вимкнено — сповіщення Android.
+        if (document.visibilityState === 'hidden') notifySignal(ev.signal);
+      } else if (ev.type === 'result') {
+        if (document.visibilityState === 'hidden') notifyResult(ev.signal, engine.asset(ev.signal.assetId)?.digits ?? 5);
       } else if (ev.type === 'mode') {
         setToast({
           id: Date.now(),
@@ -66,6 +74,7 @@ export default function App() {
       }
     });
     engine.start();
+    startBackground();
     const unlock = () => unlockAudio();
     window.addEventListener('pointerdown', unlock);
     // Свічки спот-пар — на пристрій: раз на свічку і коли застосунок ховається.
@@ -199,4 +208,15 @@ export default function App() {
       {toast && <Toast key={toast.id} text={toast.text} onDone={() => setToast(null)} />}
     </>
   );
+}
+
+// Текст постійного сповіщення фонової служби.
+function backgroundText(snap) {
+  const n = snap.signals.length;
+  const active = n ? `Активних сигналів: ${n}` : 'Чекаю сильний сигнал';
+  if (snap.session.mode === 'otc') return `${active} · OTC`;
+  const feed = { live: 'ціни йдуть', connecting: 'підключаюсь', nokey: 'немає ключа', error: 'помилка фіду' }[
+    snap.spotFeed?.status
+  ];
+  return feed ? `${active} · ${feed}` : active;
 }
