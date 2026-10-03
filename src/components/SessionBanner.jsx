@@ -3,6 +3,7 @@ import { kyivDateTime } from '../lib/session.js';
 export default function SessionBanner({ session, assets, names }) {
   const otc = session.mode === 'otc';
   const live = assets.filter((a) => a.live).length;
+  const problem = assets.find((a) => a.feedError)?.feedError; // напр. «HTTP 401» — видно, чому фіду немає
   const when = session.nextChange ? kyivDateTime(session.nextChange) : '—';
   return (
     <section className={`banner ${otc ? 'banner-otc' : ''}`}>
@@ -15,6 +16,7 @@ export default function SessionBanner({ session, assets, names }) {
       {otc && (
         <div className="banner-sub">
           Графік Binarium: {live > 0 ? `наживо ${live} з ${assets.length}` : 'фіду немає, працює симуляція'}
+          {problem && <span className="muted"> · {problem}</span>}
         </div>
       )}
       <div className="banner-next">
