@@ -1,6 +1,16 @@
 import { ALL_ASSETS } from './assets.js';
 import { computeVotes } from './indicators.js';
-import { createWalker, stepWalker, pushPrice, buildHistory, TICK_MS, MAX_CANDLES } from './market.js';
+import {
+  createWalker,
+  stepWalker,
+  pushPrice,
+  buildHistory,
+  bucketOf,
+  TICK_MS,
+  CANDLE_MS,
+  HISTORY_CANDLES,
+  MAX_CANDLES,
+} from './market.js';
 import { sessionInfo } from './session.js';
 import {
   evaluate,
@@ -16,6 +26,7 @@ import { TwelveDataFeed, probePairs as realProbe } from './twelvedata.js';
 import { detectLevelBounce, detectWedgeBreakout, patternConfidence, patternReasons } from './patterns.js';
 
 const FEED_STALE_MS = 10_000;
+const FEED_HISTORY_MS = HISTORY_CANDLES * CANDLE_MS; // скільки справжньої історії OTC тягнемо при підключенні
 const SPOT_STALE_MS = 30_000; // форекс може кілька секунд не тікати — це ще не обрив
 const SPOT_GAP_RESET_MS = 120_000; // після довшої перерви історія вже не суцільна — розігрів наново
 export const WARMUP_CANDLES = 52; // SMA / EMA 50 + закрита свічка
@@ -80,7 +91,9 @@ export class Engine {
       price: real ? (candles[candles.length - 1]?.c ?? null) : walker.price,
       source: real ? 'twelvedata' : 'sim',
       feedAt: 0,
-      feedSynced: false,
+      feedTried: false, // перша відповідь фіду Binarium уже прийшла (з цінами чи з помилкою)
+      feedEver: false, // фід Binarium хоч раз дав ціни
+      feedError: null,
       pending: false,
       closedT: null,
       closedEv: null,
@@ -169,15 +182,13 @@ export class Engine {
   start() {
     if (this.timer) return;
     this.timer = setInterval(() => this.tick(), TICK_MS);
-    this.poller = setInterval(() => this.poll(), POLL_MS);
     this.poll();
     this.syncSpotFeed();
   }
 
   stop() {
     clearInterval(this.timer);
-    clearInterval(this.poller);
-    this.timer = this.poller = null;
+    this.timer = null;
     this.syncSpotFeed();
   }
 
@@ -230,6 +241,8 @@ export class Engine {
       this.syncSpotFeed();
       this.emit({ type: 'mode', mode: session.mode });
     } else this.session = session;
+    // Опитування Binarium — з тіку: у фоні таймери WebView гальмують, а тік будить нативна служба.
+    if (this.timer && t - (this.lastPoll ?? 0) >= POLL_MS) this.poll();
 
     for (const s of this.state.values()) {
       if (s.source === 'twelvedata') {
@@ -290,7 +303,11 @@ export class Engine {
   }
 
   canSignal(s, t) {
-    if (s.source === 'twelvedata' && !this.feedLive(s, t)) return false; // ціни не йдуть — сигналів немає
+    // Справжні ціни не йдуть — сигналів немає. Для OTC так стає, щойно фід Binarium хоч раз запрацював:
+    // короткі провали фіду заповнює симуляція, і сигнал на ній був би вигаданим.
+    if ((s.source === 'twelvedata' || s.feedEver) && !this.feedLive(s, t)) return false;
+    // До першої відповіді фіду OTC стоїть на симуляції старту — чекаємо, чи прийдуть справжні ціни.
+    if (s.asset.market === 'otc' && !s.feedTried) return false;
     if (this.signals.length >= MAX_ACTIVE) return false;
     if (this.signals.some((x) => x.assetId === s.asset.id)) return false;
     const end = this.lastEnd.get(s.asset.id);
@@ -349,53 +366,59 @@ export class Engine {
   }
 
   poll() {
+    const t = this.now();
+    this.lastPoll = t;
     if (this.mode !== 'otc') return;
     for (const s of this.state.values()) {
       if (s.asset.market !== 'otc' || s.pending) continue;
       s.pending = true;
-      this.fetchFeed(s.asset.binariumId, this.now())
+      // Фід іде — дотягуємо від останньої свічки. Інакше (старт, повернення після обриву)
+      // беремо всю історію заново: так у ній не лишається ні симуляції, ні дірок.
+      const last = s.source === 'feed' ? s.candles[s.candles.length - 1] : null;
+      const full = !last || t - last.t > FEED_HISTORY_MS;
+      const from = full ? t - FEED_HISTORY_MS : last.t - CANDLE_MS;
+      this.fetchFeed(s.asset.binariumId, from, t)
         .then((data) => {
-          if (data) this.applyFeed(s, data, this.now());
+          if (data) this.applyFeed(s, data, this.now(), full);
         })
-        .catch(() => {})
+        .catch((e) => {
+          s.feedError = e?.message || 'помилка фіду';
+        })
         .finally(() => {
           s.pending = false;
+          s.feedTried = true;
         });
     }
   }
 
-  // Вливає бари фіду в історію. Перший раз зсуває симуляцію до рівня реальної ціни.
-  applyFeed(s, { bars, quote }, t) {
-    const c = s.candles;
-    if (!s.feedSynced) {
-      const ref = bars.length ? bars[0].o : quote?.value;
-      if (!ref) return;
-      const cut = bars.length ? bars[0].t : Infinity;
-      const kept = c.filter((k) => k.t < cut);
-      const last = kept[kept.length - 1]?.c ?? s.price;
-      const ratio = ref / last;
-      for (const k of kept) {
-        k.o *= ratio;
-        k.h *= ratio;
-        k.l *= ratio;
-        k.c *= ratio;
+  // Вливає свічки фіду. Повна історія замінює все, що було, — разом із симуляцією.
+  applyFeed(s, { bars, quote, note }, t, full = false) {
+    // Годинник сервера буває трохи попереду телефона — свічок «з майбутнього» не беремо,
+    // інакше нова свічка тіку стала б перед ними і порядок зламався.
+    const cur = bucketOf(t);
+    bars = bars.filter((b) => b.t <= cur);
+    if (full) s.candles = bars.slice(-MAX_CANDLES).map((b) => ({ ...b }));
+    else {
+      const c = s.candles;
+      for (const b of bars) {
+        let i = c.length - 1;
+        while (i >= 0 && c[i].t > b.t) i--;
+        if (i >= 0 && c[i].t === b.t) c[i] = { ...b };
+        else if (!c.length || b.t > c[c.length - 1].t) c.push({ ...b });
       }
-      c.length = 0;
-      c.push(...kept);
-      s.walker.base = ref; // симуляція після фіду тримається біля реальної ціни
-      s.feedSynced = true;
+      if (c.length > MAX_CANDLES) c.splice(0, c.length - MAX_CANDLES);
     }
-    for (const b of bars) {
-      const i = c.findIndex((k) => k.t === b.t);
-      if (i >= 0) c[i] = { ...b };
-      else if (!c.length || b.t > c[c.length - 1].t) c.push({ ...b });
-    }
-    if (c.length > MAX_CANDLES) c.splice(0, c.length - MAX_CANDLES);
-    s.price = quote?.value ?? c[c.length - 1].c;
-    pushPrice(c, t, s.price);
-    s.walker.price = s.price;
+    const price = quote?.value ?? s.candles[s.candles.length - 1]?.c;
+    if (price == null) return;
+    s.price = price;
+    pushPrice(s.candles, t, price);
+    s.walker.price = price;
+    s.walker.base = price; // якщо фід пропаде, симуляція триматиметься біля справжньої ціни
     s.source = 'feed';
     s.feedAt = t;
+    s.feedEver = true;
+    s.feedError = note || null;
+    s.closedT = null; // свічки змінились — перерахувати закриту
   }
 
   snapshot() {
@@ -414,6 +437,7 @@ export class Engine {
           live: this.feedLive(s, t),
           warmup: { have: Math.min(c.length, WARMUP_CANDLES), need: WARMUP_CANDLES },
           unavailable: !!s.unavailable,
+          feedError: s.feedError ?? null,
           ev: s.ev,
         };
       }),

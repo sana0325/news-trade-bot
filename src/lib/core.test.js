@@ -1,8 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { computeVotes, rsi, sma, BUY, SELL } from './indicators.js';
 import { evaluate, isStrong, resolveSignal, createSignal, SIGNAL_MS } from './signal.js';
 import { isForexOpen, nextSessionChange, kyivDateTime } from './session.js';
-import { parseCandles, parseLastQuote, toBars } from './binarium.js';
+import {
+  parseCandles,
+  parseLastQuote,
+  toBars,
+  candlesUrl,
+  quotesUrl,
+  fetchFeed,
+  FeedError,
+} from './binarium.js';
 import { Engine } from './engine.js';
 import { OTC_ASSETS, spotAssetsFor } from './assets.js';
 import { TwelveDataFeed, parseKeys, probePairs } from './twelvedata.js';
@@ -94,10 +102,95 @@ describe('сесія', () => {
 });
 
 describe('фід Binarium', () => {
+  const NOW = Date.parse('2026-10-03T12:00:00Z');
+  const res = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
+  // Сервер: свічки по 15 с на весь запитаний діапазон, котирування — останнє.
+  const server = (price = 1.17) => {
+    const seen = [];
+    const fetch = async (url) => {
+      seen.push(url);
+      const q = new URL(url, 'http://x').searchParams;
+      const from = Date.parse(q.get('from'));
+      const to = Date.parse(q.get('to'));
+      if (url.includes('/quotes')) return res({ data: [{ value: price, timestamp: to / 1000 }] });
+      const data = [];
+      for (let t = Math.ceil(from / 15000) * 15000; t <= to; t += 15000)
+        data.push({ open: price, high: price + 0.001, low: price - 0.001, close: price, timestamp: t / 1000 });
+      return res({ data });
+    };
+    return { seen, fetch };
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
   it('терпимо читає свічки й котирування', () => {
     const c = parseCandles({ data: [{ time: 30, open: '1', high: 2, low: 0.5, close: 1.5 }, [15, 1, 1, 1, 1]] });
     expect(c.map((x) => x.t)).toEqual([15000, 30000]);
     expect(parseLastQuote([{ value: 1.1, time: 1 }, { value: 1.2, time: 2 }]).value).toBe(1.2);
+    // Час без поясу — UTC, а не місцевий час телефона.
+    expect(parseLastQuote({ data: [{ value: 1.3, createdAt: '2026-10-03 12:00:01' }] }).t).toBe(NOW + 1000);
+  });
+
+  it('запити як у терміналі Binarium: ISO-час і detalization', () => {
+    const from = NOW - 8 * 60_000;
+    expect(candlesUrl(43, from, NOW)).toBe(
+      '/binarium/api/v1/assets/43/candles?from=2026-10-03T11%3A52%3A00.000Z&to=2026-10-03T12%3A00%3A00.000Z&detalization=15s',
+    );
+    expect(quotesUrl(46, from, NOW)).toBe(
+      '/binarium/api/v1/assets/46/quotes?from=2026-10-03T11%3A52%3A00.000Z&to=2026-10-03T12%3A00%3A00.000Z&detalization=1s',
+    );
+  });
+
+  it('історія за 32 хв — чотири запити по 8 хв від найсвіжішого, плюс котирування', async () => {
+    const { seen, fetch } = server();
+    vi.stubGlobal('fetch', fetch);
+    const { bars, quote, note } = await fetchFeed(43, NOW - 32 * 60_000, NOW);
+    const candles = seen.filter((u) => u.includes('/candles'));
+    expect(candles).toHaveLength(4);
+    expect(candles[0]).toContain('to=2026-10-03T12%3A00%3A00.000Z');
+    expect(candles[3]).toContain('from=2026-10-03T11%3A28%3A00.000Z');
+    expect(seen.filter((u) => u.includes('/quotes'))).toHaveLength(1);
+    expect(bars).toHaveLength(129); // 32 хв по 15 с, межі шматків не дублюються
+    expect(bars.every((b, i) => i === 0 || b.t - bars[i - 1].t === 15000)).toBe(true);
+    expect(quote.value).toBe(1.17);
+    expect(note).toBe('');
+  });
+
+  it('старшої історії немає — беремо, що дав свіжий шматок', async () => {
+    const { fetch } = server();
+    vi.stubGlobal('fetch', async (url) => {
+      const from = Date.parse(new URL(url, 'http://x').searchParams.get('from'));
+      return url.includes('/candles') && from < NOW - 8 * 60_000 ? res({ message: 'range' }, 400) : fetch(url);
+    });
+    const { bars } = await fetchFeed(43, NOW - 32 * 60_000, NOW);
+    expect(bars).toHaveLength(33);
+  });
+
+  it('пояснює, чому фіду немає', async () => {
+    vi.stubGlobal('fetch', async () => res({ error: 'unauthorized' }, 401));
+    const err = await fetchFeed(43, NOW - 60_000, NOW).catch((e) => e);
+    expect(err).toBeInstanceOf(FeedError);
+    expect(err.message).toBe('HTTP 401');
+
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    await expect(fetchFeed(43, NOW - 60_000, NOW)).rejects.toThrow('немає з’єднання');
+
+    // Котирування прочитались, свічки — ні: фід працює, а в примітці видно, які поля прийшли.
+    vi.stubGlobal('fetch', async (url) =>
+      url.includes('/quotes') ? res({ data: [{ value: 1.17, timestamp: NOW / 1000 }] }) : res({ data: [{ foo: 1, bar: 2 }] }),
+    );
+    const part = await fetchFeed(43, NOW - 60_000, NOW);
+    expect(part.quote.value).toBe(1.17);
+    expect(part.note).toBe('свічки: не впізнав формат (поля foo, bar)');
+
+    // Сервер віддає старі дані — це не живі ціни.
+    vi.stubGlobal('fetch', async (url) =>
+      url.includes('/quotes')
+        ? res({ data: [{ value: 1.17, timestamp: (NOW - 3600_000) / 1000 }] })
+        : res({ data: [{ open: 1, close: 1, timestamp: (NOW - 3600_000) / 1000 }] }),
+    );
+    await expect(fetchFeed(43, NOW - 60_000, NOW)).rejects.toThrow('ціни не оновлюються');
   });
 
   it('збирає бари по 15 секунд', () => {
@@ -114,10 +207,32 @@ describe('фід Binarium', () => {
 });
 
 describe('рушій', () => {
-  it('не більше 3 активних і пауза пари, історія 128 → ≤140', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  // Фід: свічки по 15 с на весь запитаний діапазон з ціною p.
+  const realFeed = (p = 1.2) => {
+    const calls = [];
+    let fail = null;
+    const fetchFeed = async (id, from, now) => {
+      calls.push({ id, from, now });
+      if (fail) throw new FeedError(fail);
+      const bars = [];
+      for (let t = Math.ceil(from / 15000) * 15000; t <= now; t += 15000) bars.push({ t, o: p, h: p, l: p, c: p });
+      return { bars, quote: { t: now, value: p }, note: '' };
+    };
+    return { calls, fetchFeed, failWith: (m) => (fail = m) };
+  };
+
+  it('не більше 3 активних і пауза пари, історія 128 → ≤140', async () => {
     let t = Date.parse('2026-10-03T12:00:00Z'); // субота: OTC без фіду працює на симуляції
-    const e = new Engine({ now: () => t, fetchFeed: async () => null });
+    const e = new Engine({
+      now: () => t,
+      fetchFeed: async () => {
+        throw new FeedError('HTTP 401');
+      },
+    });
     expect(e.candles('eurusd-otc')).toHaveLength(128);
+    e.poll(); // фід відповів помилкою — лишається симуляція
+    await flush();
     const created = [];
     e.subscribe((ev) => ev.type === 'signal' && created.push(ev.signal));
     for (let i = 0; i < 3000; i++) {
@@ -126,6 +241,7 @@ describe('рушій', () => {
       expect(e.signals.length).toBeLessThanOrEqual(3);
     }
     expect(e.candles('eurusd-otc').length).toBeLessThanOrEqual(140);
+    expect(created.length).toBeGreaterThan(0);
     expect(created.every((s) => s.confidence >= 74)).toBe(true);
     const ind = created.filter((s) => s.strategy === 'indicators');
     expect(ind.every((s) => Math.abs(s.maBuy + s.techBuy - s.maSell - s.techSell) >= 12)).toBe(true);
@@ -145,11 +261,105 @@ describe('рушій', () => {
     const e = new Engine({ now: () => t, fetchFeed: feed });
     expect(e.snapshot().assets.map((a) => a.id)).toEqual(OTC_ASSETS.map((a) => a.id));
     e.poll();
-    await new Promise((r) => setTimeout(r, 0));
+    await flush();
     expect(e.priceOf('eurusd-otc')).toBe(1.2005);
     t += 280;
     e.tick();
     expect(e.snapshot().assets[0].live).toBe(true);
+  });
+
+  it('OTC: при підключенні справжня історія замінює симуляцію, далі дотягуємо від останньої свічки', async () => {
+    let t = Date.parse('2026-10-03T12:00:07Z');
+    const { calls, fetchFeed } = realFeed(1.2);
+    const e = new Engine({ now: () => t, fetchFeed });
+    e.poll();
+    await flush();
+    const first = calls.find((c) => c.id === 43);
+    expect(first.from).toBe(t - 32 * 60_000);
+    const c = e.candles('eurusd-otc');
+    expect(c.every((k) => k.o === 1.2 && k.c === 1.2)).toBe(true); // жодної свічки симуляції
+    expect(c.length).toBeGreaterThanOrEqual(52); // розігріву немає
+    expect(e.snapshot().assets[0]).toMatchObject({ live: true, feedError: null, warmup: { have: 52, need: 52 } });
+
+    t += 2500;
+    const last = c[c.length - 1].t;
+    e.poll();
+    await flush();
+    expect(calls.filter((x) => x.id === 43)[1].from).toBe(last - 15000);
+  });
+
+  it('OTC: причина видна в знімку; коли фід уже працював, на симуляції сигналів немає', async () => {
+    let t = Date.parse('2026-10-03T12:00:00Z');
+    const feed = realFeed(1.2);
+    const e = new Engine({ now: () => t, fetchFeed: feed.fetchFeed });
+    const s = e.state.get('eurusd-otc');
+    expect(e.canSignal(s, t)).toBe(false); // фід ще не відповів — на симуляції старту не сигналимо
+    feed.failWith('HTTP 401');
+    e.poll();
+    await flush();
+    expect(e.snapshot().assets[0]).toMatchObject({ live: false, feedError: 'HTTP 401' });
+    expect(e.canSignal(s, t)).toBe(true); // фід ні разу не працював — як і раніше, симуляція
+
+    feed.failWith(null);
+    e.poll();
+    await flush();
+    expect(e.canSignal(s, t)).toBe(true);
+    feed.failWith('HTTP 401');
+    t += 11_000;
+    e.tick(); // 11 с без цін — фід мертвий, свічки тягне симуляція
+    e.poll();
+    await flush();
+    expect(e.snapshot().assets[0]).toMatchObject({ live: false, feedError: 'HTTP 401' });
+    expect(e.canSignal(s, t)).toBe(false);
+
+    // Фід повернувся — історію беремо заново цілком, разом із проміжком на симуляції.
+    feed.failWith(null);
+    e.poll();
+    await flush();
+    expect(feed.calls.filter((x) => x.id === 43).at(-1).from).toBe(t - 32 * 60_000);
+    expect(e.candles('eurusd-otc').every((k) => k.o === 1.2 && k.c === 1.2)).toBe(true);
+  });
+
+  it('OTC: свічки з годинника сервера, що поспішає, не ламають порядок', async () => {
+    let t = Date.parse('2026-10-03T12:00:14Z');
+    const e = new Engine({
+      now: () => t,
+      fetchFeed: async () => ({
+        bars: [
+          { t: Date.parse('2026-10-03T12:00:00Z'), o: 1.2, h: 1.2, l: 1.2, c: 1.2 },
+          { t: Date.parse('2026-10-03T12:00:15Z'), o: 1.2, h: 1.2, l: 1.2, c: 1.2 },
+        ],
+        quote: { t, value: 1.2 },
+      }),
+    });
+    e.poll();
+    await flush();
+    t += 2000;
+    e.tick();
+    const ts = e.candles('eurusd-otc').map((k) => k.t);
+    expect(ts).toEqual([...ts].sort((a, b) => a - b));
+    expect(new Set(ts).size).toBe(ts.length);
+  });
+
+  it('опитування Binarium іде з тіку — його будить і пульс нативної служби', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let t = Date.parse('2026-10-03T12:00:00Z');
+    const { calls, fetchFeed } = realFeed();
+    const e = new Engine({ now: () => t, fetchFeed });
+    try {
+      e.start(); // перше опитування одразу: по запиту на кожну OTC-пару
+      await flush();
+      expect(calls).toHaveLength(2);
+      t += 1000;
+      e.tickIfStale(800);
+      expect(calls).toHaveLength(2);
+      t += 1600;
+      e.tickIfStale(800);
+      expect(calls).toHaveLength(4);
+    } finally {
+      e.stop();
+      vi.useRealTimers();
+    }
   });
 });
 
