@@ -25,7 +25,7 @@ export default function PairList({ assets, signals, selected, onSelect }) {
                 {sig && <span className={`badge ${sig.direction === 'call' ? 'up' : 'down'}`}>сигнал</span>}
                 {a.market === 'spot' && !sig && !a.live && <span className="src">офлайн</span>}
                 {a.market === 'otc' && !sig && (
-                  <span className={`src ${a.live ? 'src-live' : ''}`}>{a.live ? 'фід' : 'сим.'}</span>
+                  <span className={`src ${a.live ? 'src-live' : ''}`}>{a.live ? 'фід' : 'офлайн'}</span>
                 )}
               </span>
               <span className="pair-row">

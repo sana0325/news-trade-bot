@@ -4,6 +4,7 @@
 // Не кабінет і не ставки — лише ціни. Браузер не пустить напряму (CORS), тому у вебі запити йдуть
 // через проксі /binarium (див. vite.config.js). Інший хост можна задати через VITE_BINARIUM_BASE.
 import { bucketOf, CANDLE_MS } from './market.js';
+import { otcSymbol, DEFAULT_OTC } from './assets.js';
 
 export const POLL_MS = 2500;
 export const CHUNK_MS = 8 * 60_000; // вікно довше ~10 хв API ріже — довгу історію беремо шматками
@@ -151,10 +152,10 @@ async function getJson(url) {
 }
 
 // Свічки за [from, to] шматками по 8 хв, від найсвіжіших. Свіжий шматок обов’язковий,
-// а старшої історії сервер може й не дати — тоді беремо, що є.
-async function fetchCandles(id, from, to) {
-  const rows = [];
-  let newest; // відповідь на найсвіжіший шматок — щоб показати формат, якщо його не впізнали
+// а старшої історії сервер може й не дати — тоді беремо, що є. Повертає відповіді сервера
+// (від свіжих до старих) — так само їх віддає й нативна служба.
+async function fetchCandleChunks(id, from, to) {
+  const chunks = [];
   for (let b = to; b > from; b -= CHUNK_MS) {
     let json;
     try {
@@ -163,38 +164,195 @@ async function fetchCandles(id, from, to) {
       if (b === to) throw e;
       break;
     }
-    if (b === to) newest = json;
-    const part = parseCandles(json);
-    if (!part.length) break; // далі в минуле історії немає
-    rows.push(...part);
+    chunks.push(json);
+    if (!listOf(json).length) break; // далі в минуле історії немає
   }
-  rows.sort((x, y) => x.t - y.t);
-  return { bars: toBars(rows), shape: rows.length ? null : shapeOf(newest) };
+  return chunks;
 }
 
 const reasonOf = (e) => (e instanceof FeedError ? e.message : 'помилка фіду');
 
-// Свічки за [from, now] і останнє котирування. Коли не вийшло нічого — кидає FeedError
-// з поясненням; коли вийшла лише частина — повертає її з приміткою (note) для банера.
-export async function fetchFeed(id, from, now) {
-  const [cr, qr] = await Promise.allSettled([
-    fetchCandles(id, from, now),
-    getJson(quotesUrl(id, now - QUOTES_WINDOW_MS, now)),
-  ]);
-  const bars = cr.status === 'fulfilled' ? cr.value.bars : [];
-  const quote = qr.status === 'fulfilled' ? parseLastQuote(qr.value) : null;
+// Відповіді сервера → { bars, quote, note }. Спільне для браузера і нативної служби.
+// Коли не вийшло нічого — кидає FeedError з поясненням; коли лише частина — повертає її
+// з приміткою (note) для банера.
+export function buildFeed({ candles = [], candleError = null, quotes = null, quoteError = null }, now) {
+  const rows = candles.flatMap((json) => parseCandles(json));
+  rows.sort((x, y) => x.t - y.t);
+  const bars = toBars(rows);
+  const quote = quoteError ? null : parseLastQuote(quotes);
   const notes = [];
-  if (cr.status === 'rejected') notes.push(`свічки: ${reasonOf(cr.reason)}`);
-  else if (cr.value.shape) notes.push(`свічки: не впізнав формат (${cr.value.shape})`);
-  if (qr.status === 'rejected') notes.push(`котирування: ${reasonOf(qr.reason)}`);
-  else if (!quote && shapeOf(qr.value)) notes.push(`котирування: не впізнав формат (${shapeOf(qr.value)})`);
+  if (candleError) notes.push(`свічки: ${candleError}`);
+  else if (!bars.length && shapeOf(candles[0])) notes.push(`свічки: не впізнав формат (${shapeOf(candles[0])})`);
+  if (quoteError) notes.push(`котирування: ${quoteError}`);
+  else if (!quote && shapeOf(quotes)) notes.push(`котирування: не впізнав формат (${shapeOf(quotes)})`);
   if (!bars.length && !quote) {
     // Обидва запити впали з однієї причини (401, немає мережі) — показуємо її один раз.
-    const same = cr.status === 'rejected' && qr.status === 'rejected' && reasonOf(cr.reason) === reasonOf(qr.reason);
-    throw new FeedError(same ? reasonOf(cr.reason) : notes.join('; ') || 'порожня відповідь');
+    throw new FeedError(candleError && candleError === quoteError ? candleError : notes.join('; ') || 'порожня відповідь');
   }
   // Час котирування може бути невідомим (0) — тоді перевіряємо лише за свічками.
   const newest = Math.max(quote?.t || 0, bars.length ? bars[bars.length - 1].t + CANDLE_MS : 0);
   if (newest && now - newest > STALE_MS) throw new FeedError('ціни не оновлюються');
   return { bars, quote, note: notes.join('; ') };
+}
+
+// Свічки за [from, now] і останнє котирування — запитами з браузера.
+export async function fetchFeed(id, from, now) {
+  const [cr, qr] = await Promise.allSettled([
+    fetchCandleChunks(id, from, now),
+    getJson(quotesUrl(id, now - QUOTES_WINDOW_MS, now)),
+  ]);
+  return buildFeed(
+    {
+      candles: cr.status === 'fulfilled' ? cr.value : [],
+      candleError: cr.status === 'rejected' ? reasonOf(cr.reason) : null,
+      quotes: qr.status === 'fulfilled' ? qr.value : null,
+      quoteError: qr.status === 'rejected' ? reasonOf(qr.reason) : null,
+    },
+    now,
+  );
+}
+
+// Коли брати всю історію заново, а коли лише нове. Те саме правило — у нативній службі.
+export const FULL_HISTORY_MS = 128 * CANDLE_MS; // 32 хв — уся історія рушія
+export const FULL_AFTER_MS = 30_000; // так давно не було відповіді — беремо історію заново
+export const OVERLAP_MS = 30_000; // нове — з запасом на останні свічки
+
+export function feedRange(okTo, now) {
+  const full = okTo == null || now - okTo > FULL_AFTER_MS;
+  return { full, from: full ? now - FULL_HISTORY_MS : okTo - OVERLAP_MS };
+}
+
+// Опитувач Binarium у браузері: раз на 2.5 с по кожній обраній OTC-парі. В APK замість
+// нього працює нативна служба (native.js) — з тим самим інтерфейсом.
+export class BinariumPoller {
+  constructor({ onData, onError, now = Date.now, fetchImpl = fetchFeed }) {
+    this.onData = onData;
+    this.onError = onError;
+    this.now = now;
+    this.fetchImpl = fetchImpl;
+    this.ids = [];
+    this.okTo = new Map();
+    this.busy = new Set();
+    this.timer = null;
+  }
+
+  setIds(ids) {
+    this.ids = [...ids];
+  }
+
+  start() {
+    if (this.timer) return;
+    this.timer = setInterval(() => this.poll(), POLL_MS);
+    this.poll();
+  }
+
+  stop() {
+    clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  // Наступне опитування — з усією історією (після повернення в застосунок або дірки).
+  refresh(id) {
+    if (id == null) this.okTo.clear();
+    else this.okTo.delete(id);
+  }
+
+  poll() {
+    const now = this.now();
+    for (const id of this.ids) {
+      if (this.busy.has(id)) continue;
+      this.busy.add(id);
+      const { full, from } = feedRange(this.okTo.get(id), now);
+      this.fetchImpl(id, from, now)
+        .then((data) => {
+          this.okTo.set(id, now);
+          this.onData(id, data, full);
+        })
+        .catch((e) => this.onError(id, reasonOf(e)))
+        .finally(() => this.busy.delete(id));
+    }
+  }
+}
+
+// ---------- які OTC-пари є ----------
+
+// Список активів, як у терміналі: сторінками по 250. Беремо ті, що з позначкою OTC.
+export async function fetchOtcCatalog() {
+  const out = [];
+  for (let offset = 0; offset < 2000; offset += 250) {
+    const q = new URLSearchParams();
+    q.append('pagination[limit]', '250');
+    q.append('pagination[offset]', String(offset));
+    const page = listOf(await getJson(`${BASE}/api/v1/assets?${q.toString()}`));
+    for (const a of page) {
+      const id = num(a?.id);
+      const name = typeof a?.name === 'string' ? a.name : '';
+      if (Number.isInteger(id) && /\bOTC\b/i.test(name)) out.push({ binariumId: id, name });
+    }
+    if (page.length < 250) break;
+  }
+  return out;
+}
+
+// Скільки знаків після коми — за самими котируваннями.
+export function digitsOf(values) {
+  let d = 0;
+  for (const v of values) {
+    const m = String(v).match(/\.(\d+)$/);
+    if (m) d = Math.max(d, m[1].length);
+  }
+  return Math.min(Math.max(d, 2), 6);
+}
+
+// Перевірка однієї пари: свіжі котирування є — пара працює; знаки — з цих котирувань.
+async function probeOne(id, now) {
+  const json = await getJson(quotesUrl(id, now - QUOTES_WINDOW_MS, now));
+  const quote = parseLastQuote(json);
+  if (!quote) return null;
+  if (quote.t && now - quote.t > STALE_MS) return null;
+  const values = listOf(json)
+    .map((r) => (Array.isArray(r) ? r[1] : (r?.value ?? r?.price ?? r?.quote)))
+    .filter((v) => v != null);
+  return { digits: digitsOf(values.length ? values : [quote.value]) };
+}
+
+// Кнопка «Перевірити»: які OTC-пари Binarium зараз віддає з цінами.
+// candidates — [{ binariumId, symbol }]; якщо список активів не прийшов — перевіряємо відомі.
+export async function probeOtc({
+  onProgress,
+  now = Date.now,
+  catalog = fetchOtcCatalog,
+  fallback = DEFAULT_OTC,
+} = {}) {
+  let candidates;
+  let error = '';
+  try {
+    candidates = (await catalog()).map((a) => ({ binariumId: a.binariumId, symbol: otcSymbol(a.name) }));
+    if (!candidates.length) throw new FeedError('у списку немає OTC');
+  } catch (e) {
+    error = `список активів: ${reasonOf(e)}, перевіряю відомі пари`;
+    candidates = fallback;
+  }
+  const ok = [];
+  const fail = [];
+  let done = 0;
+  const queue = [...candidates];
+  const worker = async () => {
+    while (queue.length) {
+      const c = queue.shift();
+      try {
+        const r = await probeOne(c.binariumId, now());
+        // Нулі в кінці ціни не пишуться (1.17120 → 1.1712): відомі знаки не зменшуємо.
+        if (r) ok.push({ binariumId: c.binariumId, symbol: c.symbol, digits: Math.max(r.digits, c.digits ?? 0) });
+        else fail.push(c.symbol);
+      } catch {
+        fail.push(c.symbol);
+      }
+      onProgress?.(++done, candidates.length);
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  const order = (x) => candidates.findIndex((c) => c.binariumId === x.binariumId);
+  ok.sort((a, b) => order(a) - order(b));
+  return { ok, fail, error };
 }

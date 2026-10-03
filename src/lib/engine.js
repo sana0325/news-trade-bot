@@ -1,16 +1,6 @@
 import { ALL_ASSETS } from './assets.js';
 import { computeVotes } from './indicators.js';
-import {
-  createWalker,
-  stepWalker,
-  pushPrice,
-  buildHistory,
-  bucketOf,
-  TICK_MS,
-  CANDLE_MS,
-  HISTORY_CANDLES,
-  MAX_CANDLES,
-} from './market.js';
+import { pushPrice, bucketOf, TICK_MS, CANDLE_MS, MAX_CANDLES } from './market.js';
 import { sessionInfo } from './session.js';
 import {
   evaluate,
@@ -21,34 +11,31 @@ import {
   PAIR_PAUSE_MS,
   MIN_CONFIDENCE,
 } from './signal.js';
-import { fetchFeed as realFetchFeed, POLL_MS } from './binarium.js';
+import { BinariumPoller } from './binarium.js';
 import { TwelveDataFeed, probePairs as realProbe } from './twelvedata.js';
 import { detectLevelBounce, detectWedgeBreakout, patternConfidence, patternReasons } from './patterns.js';
 
-const FEED_STALE_MS = 10_000;
-const FEED_HISTORY_MS = HISTORY_CANDLES * CANDLE_MS; // скільки справжньої історії OTC тягнемо при підключенні
+const FEED_STALE_MS = 10_000; // OTC: Binarium опитуємо раз на 2.5 с
 const SPOT_STALE_MS = 30_000; // форекс може кілька секунд не тікати — це ще не обрив
 const SPOT_GAP_RESET_MS = 120_000; // після довшої перерви історія вже не суцільна — розігрів наново
 export const WARMUP_CANDLES = 52; // SMA / EMA 50 + закрита свічка
 
 const defaultSpotFeed = (opts) => new TwelveDataFeed(opts);
+const defaultOtcFeed = (opts) => new BinariumPoller(opts);
 const MAX_RESULTS = 8;
 
 export class Engine {
   constructor({
     now = Date.now,
-    rand = Math.random,
-    fetchFeed = realFetchFeed,
     assets = ALL_ASSETS,
     createSpotFeed = defaultSpotFeed,
+    createOtcFeed = defaultOtcFeed,
     savedCandles = {}, // { 'EUR/USD': [...] } — свічки з минулого запуску
     probe = realProbe,
   } = {}) {
     this.now = now;
-    this.rand = rand;
     this.probeImpl = probe;
     this.savedCandles = savedCandles;
-    this.fetchFeed = fetchFeed;
     this.filter = MIN_CONFIDENCE;
     this.strategies = new Set(['indicators', 'level', 'wedge']);
     this.signals = [];
@@ -70,31 +57,47 @@ export class Engine {
         this.spotStatus = { status, message };
       },
     });
+    this.otcFeed = createOtcFeed({
+      onData: (id, data, full) => {
+        const s = this.otcState(id);
+        if (s) this.applyFeed(s, data, this.now(), full);
+      },
+      onError: (id, message) => {
+        const s = this.otcState(id);
+        if (s) s.feedError = message;
+      },
+    });
+    this.otcFeed.setIds(this.otcIds());
     this.evaluateAll(t, false);
   }
 
+  otcState(binariumId) {
+    for (const s of this.state.values()) if (s.asset.binariumId === binariumId) return s;
+    return null;
+  }
+
+  otcIds() {
+    return [...this.state.values()].filter((s) => s.asset.market === 'otc').map((s) => s.asset.binariumId);
+  }
+
   makeState(asset, t) {
-    // Спот-пари Twelve Data: лише справжні ціни, без симуляції. Історію беремо зі збережених
-    // свічок, якщо перерва була коротка; інакше — порожньо і розігрів.
-    const real = asset.feed === 'twelvedata';
-    const walker = real ? null : createWalker(asset, this.rand);
+    // Лише справжні ціни, без симуляції. Спот (Twelve Data): історія зі збережених свічок,
+    // якщо перерва була коротка; інакше — порожньо і розігрів. OTC (Binarium): історію дає сам
+    // Binarium при підключенні, до перших цін пара «немає цін».
+    const spot = asset.feed === 'twelvedata';
     let candles = [];
-    if (real) {
+    if (spot) {
       const saved = this.savedCandles[asset.tdSymbol];
       const last = saved?.[saved.length - 1];
       if (last && t - last.t <= SPOT_GAP_RESET_MS) candles = saved.slice(-MAX_CANDLES).map((c) => ({ ...c }));
-    } else candles = buildHistory(walker, t);
+    }
     return {
       asset,
-      walker,
       candles,
-      price: real ? (candles[candles.length - 1]?.c ?? null) : walker.price,
-      source: real ? 'twelvedata' : 'sim',
+      price: candles[candles.length - 1]?.c ?? null,
+      source: spot ? 'twelvedata' : 'binarium',
       feedAt: 0,
-      feedTried: false, // перша відповідь фіду Binarium уже прийшла (з цінами чи з помилкою)
-      feedEver: false, // фід Binarium хоч раз дав ціни
       feedError: null,
-      pending: false,
       closedT: null,
       closedEv: null,
       patterns: [],
@@ -120,6 +123,22 @@ export class Engine {
     this.signals = this.signals.filter((sig) => this.state.has(sig.assetId));
     for (const a of assets) if (!this.state.has(a.id)) this.state.set(a.id, this.makeState(a, t));
     this.spotFeed.setSymbols(this.spotSymbols());
+  }
+
+  // Новий набір OTC-пар. Як і для спот-пар: незмінені пари лишаються, сигнали прибраних знімаються.
+  setOtcPairs(assets) {
+    const t = this.now();
+    const keep = new Set(assets.map((a) => a.id));
+    for (const [id, s] of this.state) if (s.asset.market === 'otc' && !keep.has(id)) this.state.delete(id);
+    this.signals = this.signals.filter((sig) => this.state.has(sig.assetId));
+    for (const a of assets) if (!this.state.has(a.id)) this.state.set(a.id, this.makeState(a, t));
+    this.otcFeed.setIds(this.otcIds());
+  }
+
+  otcPairs() {
+    return [...this.state.values()]
+      .filter((s) => s.asset.market === 'otc')
+      .map(({ asset: a }) => ({ binariumId: a.binariumId, symbol: a.symbol, digits: a.digits }));
   }
 
   // Свічки спот-пар для збереження на пристрої.
@@ -149,6 +168,13 @@ export class Engine {
   syncSpotFeed() {
     if (this.timer && this.mode === 'spot') this.spotFeed.start();
     else this.spotFeed.stop();
+    if (this.timer && this.mode === 'otc') this.otcFeed.start();
+    else this.otcFeed.stop();
+  }
+
+  // Після повернення в застосунок: OTC-історію — заново (поки WebView спав, дані могли загубитись).
+  resyncOtc() {
+    this.otcFeed.refresh();
   }
 
   applySpotPrice(symbol, price, t) {
@@ -182,7 +208,6 @@ export class Engine {
   start() {
     if (this.timer) return;
     this.timer = setInterval(() => this.tick(), TICK_MS);
-    this.poll();
     this.syncSpotFeed();
   }
 
@@ -201,8 +226,7 @@ export class Engine {
   }
 
   feedLive(s, t) {
-    if (s.source === 'twelvedata') return s.price != null && t - s.feedAt < SPOT_STALE_MS;
-    return s.source === 'feed' && t - s.feedAt < FEED_STALE_MS;
+    return s.price != null && t - s.feedAt < (s.source === 'twelvedata' ? SPOT_STALE_MS : FEED_STALE_MS);
   }
 
   warm(s) {
@@ -241,22 +265,9 @@ export class Engine {
       this.syncSpotFeed();
       this.emit({ type: 'mode', mode: session.mode });
     } else this.session = session;
-    // Опитування Binarium — з тіку: у фоні таймери WebView гальмують, а тік будить нативна служба.
-    if (this.timer && t - (this.lastPoll ?? 0) >= POLL_MS) this.poll();
 
-    for (const s of this.state.values()) {
-      if (s.source === 'twelvedata') {
-        // Між тіками свічка триває з останньою ціною; без фіду — стоїть.
-        if (this.feedLive(s, t)) pushPrice(s.candles, t, s.price);
-      } else if (this.feedLive(s, t)) {
-        pushPrice(s.candles, t, s.price);
-      } else {
-        if (s.source === 'feed') s.source = 'sim'; // фіду немає — лишаємо симуляцію
-        s.walker.price = s.price;
-        s.price = stepWalker(s.walker);
-        pushPrice(s.candles, t, s.price);
-      }
-    }
+    // Між цінами свічка триває з останньою ціною; без фіду — стоїть.
+    for (const s of this.state.values()) if (this.feedLive(s, t)) pushPrice(s.candles, t, s.price);
 
     this.resolveExpired(t);
     this.evaluateAll(t, true);
@@ -303,11 +314,7 @@ export class Engine {
   }
 
   canSignal(s, t) {
-    // Справжні ціни не йдуть — сигналів немає. Для OTC так стає, щойно фід Binarium хоч раз запрацював:
-    // короткі провали фіду заповнює симуляція, і сигнал на ній був би вигаданим.
-    if ((s.source === 'twelvedata' || s.feedEver) && !this.feedLive(s, t)) return false;
-    // До першої відповіді фіду OTC стоїть на симуляції старту — чекаємо, чи прийдуть справжні ціни.
-    if (s.asset.market === 'otc' && !s.feedTried) return false;
+    if (!this.feedLive(s, t)) return false; // ціни не йдуть — сигналів немає
     if (this.signals.length >= MAX_ACTIVE) return false;
     if (this.signals.some((x) => x.assetId === s.asset.id)) return false;
     const end = this.lastEnd.get(s.asset.id);
@@ -365,41 +372,21 @@ export class Engine {
     return null;
   }
 
-  poll() {
-    const t = this.now();
-    this.lastPoll = t;
-    if (this.mode !== 'otc') return;
-    for (const s of this.state.values()) {
-      if (s.asset.market !== 'otc' || s.pending) continue;
-      s.pending = true;
-      // Фід іде — дотягуємо від останньої свічки. Інакше (старт, повернення після обриву)
-      // беремо всю історію заново: так у ній не лишається ні симуляції, ні дірок.
-      const last = s.source === 'feed' ? s.candles[s.candles.length - 1] : null;
-      const full = !last || t - last.t > FEED_HISTORY_MS;
-      const from = full ? t - FEED_HISTORY_MS : last.t - CANDLE_MS;
-      this.fetchFeed(s.asset.binariumId, from, t)
-        .then((data) => {
-          if (data) this.applyFeed(s, data, this.now(), full);
-        })
-        .catch((e) => {
-          s.feedError = e?.message || 'помилка фіду';
-        })
-        .finally(() => {
-          s.pending = false;
-          s.feedTried = true;
-        });
-    }
-  }
-
-  // Вливає свічки фіду. Повна історія замінює все, що було, — разом із симуляцією.
+  // Свічки Binarium. Повна історія замінює все, що було; нове — доливається.
   applyFeed(s, { bars, quote, note }, t, full = false) {
     // Годинник сервера буває трохи попереду телефона — свічок «з майбутнього» не беремо,
     // інакше нова свічка тіку стала б перед ними і порядок зламався.
     const cur = bucketOf(t);
     bars = bars.filter((b) => b.t <= cur);
+    const c = s.candles;
+    const last = c[c.length - 1];
     if (full) s.candles = bars.slice(-MAX_CANDLES).map((b) => ({ ...b }));
-    else {
-      const c = s.candles;
+    else if (bars.length && (!last || bars[0].t > last.t + CANDLE_MS)) {
+      // Між нашою останньою свічкою і новими — дірка (WebView спав): просимо всю історію.
+      this.otcFeed.refresh(s.asset.binariumId);
+      if (last && t - last.t > SPOT_GAP_RESET_MS) return;
+    }
+    if (!full) {
       for (const b of bars) {
         let i = c.length - 1;
         while (i >= 0 && c[i].t > b.t) i--;
@@ -412,11 +399,7 @@ export class Engine {
     if (price == null) return;
     s.price = price;
     pushPrice(s.candles, t, price);
-    s.walker.price = price;
-    s.walker.base = price; // якщо фід пропаде, симуляція триматиметься біля справжньої ціни
-    s.source = 'feed';
     s.feedAt = t;
-    s.feedEver = true;
     s.feedError = note || null;
     s.closedT = null; // свічки змінились — перерахувати закриту
   }
