@@ -18,15 +18,25 @@ import androidx.core.app.NotificationCompat;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileInputStream;
+import java.io.InterruptedIOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -39,7 +49,9 @@ import org.json.JSONObject;
  * Фонова служба VEKTOR. Живе окремо від WebView: тримає WebSocket Twelve Data, збирає
  * 15-секундні свічки і зберігає їх у файл. Тому після повернення в застосунок свічки вже є
  * і розігрів не починається наново. Щосекунди будить рушій сигналів у WebView (подія tick),
- * бо таймери прихованої сторінки Chromium сильно пригальмовує.
+ * бо таймери прихованої сторінки Chromium сильно пригальмовує. У вихідні ж раз на 2.5 с опитує
+ * ціни OTC Binarium (ті самі запити, що робить їхній термінал) і віддає сирі відповіді рушію:
+ * розбирає їх src/lib/binarium.js, як і в браузері.
  */
 public class FeedService extends Service {
 
@@ -54,11 +66,21 @@ public class FeedService extends Service {
     static final long RETRY_MAX_MS = 60_000;
     static final String FILE = "spot_candles.json";
 
+    // Binarium: як src/lib/binarium.js (POLL_MS, CHUNK_MS, FULL_HISTORY_MS, FULL_AFTER_MS, OVERLAP_MS).
+    static final String BIN_API = "https://api.binarium.com/api/v1/assets/";
+    static final long OTC_POLL_MS = 2_500;
+    static final long OTC_CHUNK_MS = 8 * 60_000;
+    static final long OTC_HISTORY_MS = 128 * CANDLE_MS;
+    static final long OTC_FULL_AFTER_MS = 30_000;
+    static final long OTC_OVERLAP_MS = 30_000;
+    static final long OTC_QUOTES_MS = 90_000;
+
     /** Отримувач подій у WebView (плагін). Null, коли WebView немає. */
     interface Listener {
         void onPrice(String symbol, double price, long t);
         void onStatus(String status, String message, List<String> unavailable);
         void onTick(long t);
+        void onOtc(JSONObject data);
     }
 
     static volatile Listener listener;
@@ -70,6 +92,8 @@ public class FeedService extends Service {
     static List<String> cfgSymbols = new ArrayList<>();
     static boolean cfgEnabled = false;
     static String cfgText = "Стежу за ринком";
+    static List<Integer> cfgOtcIds = new ArrayList<>();
+    static boolean cfgOtcOn = false;
 
     private HandlerThread thread;
     private Handler handler;
@@ -86,6 +110,11 @@ public class FeedService extends Service {
     private String note = "";
     private List<String> unavailable = new ArrayList<>();
     private long retryMs = RETRY_MIN_MS;
+
+    private OkHttpClient http;
+    private ExecutorService otcPool;
+    private final Map<Integer, Long> otcOkTo = new HashMap<>(); // id → до якого моменту вже є дані
+    private final Set<Integer> otcBusy = new HashSet<>();
 
     private final Object candleLock = new Object();
     private final Map<String, ArrayList<double[]>> candles = new HashMap<>();
@@ -118,6 +147,24 @@ public class FeedService extends Service {
         else ensureStarted(ctx);
     }
 
+    static void configureOtc(Context ctx, List<Integer> ids, boolean on) {
+        synchronized (CONFIG_LOCK) {
+            cfgOtcIds = new ArrayList<>(ids);
+            cfgOtcOn = on;
+        }
+        if (instance == null) ensureStarted(ctx);
+    }
+
+    /** Наступне опитування id (або всіх, якщо null) — з усією історією. */
+    static void refreshOtc(Integer id) {
+        FeedService s = instance;
+        if (s == null) return;
+        synchronized (s.otcOkTo) {
+            if (id == null) s.otcOkTo.clear();
+            else s.otcOkTo.remove(id);
+        }
+    }
+
     /** Свічки як JSON {symbol: [[t,o,h,l,c], ...]}; якщо служба не працює — з файлу. */
     static JSONObject candlesJson(Context ctx) {
         FeedService s = instance;
@@ -141,6 +188,8 @@ public class FeedService extends Service {
         wakeLock.setReferenceCounted(false);
         wakeLock.acquire();
         client = new OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).retryOnConnectionFailure(true).build();
+        http = client.newBuilder().pingInterval(0, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).build();
+        otcPool = Executors.newFixedThreadPool(3);
         thread = new HandlerThread("vektor-feed");
         thread.start();
         handler = new Handler(thread.getLooper());
@@ -149,6 +198,7 @@ public class FeedService extends Service {
         handler.post(this::applyConfig);
         handler.postDelayed(ticker, 1000);
         handler.postDelayed(heartbeat, HEARTBEAT_MS);
+        handler.postDelayed(otcPoller, OTC_POLL_MS);
     }
 
     @Override
@@ -162,6 +212,7 @@ public class FeedService extends Service {
         instance = null;
         handler.removeCallbacksAndMessages(null);
         closeWs();
+        otcPool.shutdownNow();
         saveCandles();
         thread.quitSafely();
         if (wakeLock.isHeld()) wakeLock.release();
@@ -425,6 +476,130 @@ public class FeedService extends Service {
             handler.postDelayed(this, 1000);
         }
     };
+
+    // ---------- OTC Binarium ----------
+
+    private final Runnable otcPoller = new Runnable() {
+        @Override
+        public void run() {
+            List<Integer> ids;
+            boolean on;
+            synchronized (CONFIG_LOCK) {
+                ids = new ArrayList<>(cfgOtcIds);
+                on = cfgOtcOn;
+            }
+            // Без WebView нікому віддавати — не опитуємо; потім почнемо з повної історії.
+            if (!on || listener == null) {
+                synchronized (otcOkTo) {
+                    otcOkTo.clear();
+                }
+            } else {
+                for (Integer id : ids) {
+                    synchronized (otcBusy) {
+                        if (!otcBusy.add(id)) continue;
+                    }
+                    otcPool.execute(() -> {
+                        try {
+                            pollOtc(id);
+                        } finally {
+                            synchronized (otcBusy) {
+                                otcBusy.remove(id);
+                            }
+                        }
+                    });
+                }
+            }
+            handler.postDelayed(this, OTC_POLL_MS);
+        }
+    };
+
+    private static String iso(long ms) {
+        SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return f.format(new Date(ms));
+    }
+
+    private static String rangeUrl(int id, String kind, long from, long to, String detalization) {
+        HttpUrl base = HttpUrl.parse(BIN_API + id + "/" + kind);
+        return base.newBuilder()
+            .addQueryParameter("from", iso(from))
+            .addQueryParameter("to", iso(to))
+            .addQueryParameter("detalization", detalization)
+            .build()
+            .toString();
+    }
+
+    /** Тіло відповіді; помилку кидає з коротким поясненням, як у binarium.js. */
+    private String get(String url) throws Exception {
+        Request req = new Request.Builder().url(url).header("Accept", "application/json").build();
+        try (Response r = http.newCall(req).execute()) {
+            if (!r.isSuccessful()) throw new Exception("HTTP " + r.code());
+            return r.body() != null ? r.body().string() : "";
+        } catch (InterruptedIOException e) {
+            throw new Exception("сервер не відповідає");
+        } catch (java.io.IOException e) {
+            throw new Exception("немає з’єднання");
+        }
+    }
+
+    /** Порожня відповідь свічок — далі в минуле історії немає. */
+    private static boolean emptyList(String body) {
+        try {
+            Object v = new org.json.JSONTokener(body).nextValue();
+            JSONArray arr = v instanceof JSONArray ? (JSONArray) v : v instanceof JSONObject ? ((JSONObject) v).optJSONArray("data") : null;
+            return arr == null || arr.length() == 0;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    private void pollOtc(int id) {
+        long now = System.currentTimeMillis();
+        Long okTo;
+        synchronized (otcOkTo) {
+            okTo = otcOkTo.get(id);
+        }
+        boolean full = okTo == null || now - okTo > OTC_FULL_AFTER_MS;
+        long from = full ? now - OTC_HISTORY_MS : okTo - OTC_OVERLAP_MS;
+
+        JSONArray candles = new JSONArray();
+        String candleError = null;
+        for (long b = now; b > from; b -= OTC_CHUNK_MS) {
+            String body;
+            try {
+                body = get(rangeUrl(id, "candles", Math.max(from, b - OTC_CHUNK_MS), b, "15s"));
+            } catch (Exception e) {
+                if (b == now) candleError = e.getMessage();
+                break;
+            }
+            candles.put(body);
+            if (emptyList(body)) break;
+        }
+        String quotes = null;
+        String quoteError = null;
+        try {
+            quotes = get(rangeUrl(id, "quotes", now - OTC_QUOTES_MS, now, "1s"));
+        } catch (Exception e) {
+            quoteError = e.getMessage();
+        }
+        if (candleError == null || quoteError == null) {
+            synchronized (otcOkTo) {
+                otcOkTo.put(id, now);
+            }
+        }
+        try {
+            JSONObject d = new JSONObject()
+                .put("id", id)
+                .put("full", full)
+                .put("now", now)
+                .put("candles", candles)
+                .put("candleError", candleError == null ? JSONObject.NULL : candleError)
+                .put("quotes", quotes == null ? JSONObject.NULL : quotes)
+                .put("quoteError", quoteError == null ? JSONObject.NULL : quoteError);
+            Listener l = listener;
+            if (l != null) l.onOtc(d);
+        } catch (Exception ignored) {}
+    }
 
     static List<String> parseKeys(String text) {
         LinkedHashSet<String> set = new LinkedHashSet<>();

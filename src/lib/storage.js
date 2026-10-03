@@ -1,5 +1,5 @@
 // На пристрої зберігаємо лише: звук, фільтр сили, чи закрита перша підказка,
-// ключі Twelve Data (у коді й на GitHub їх немає), обрані пари і свічки спот-пар
+// ключі Twelve Data (у коді й на GitHub їх немає), обрані пари (спот і OTC) і свічки спот-пар
 // (щоб після короткого перезапуску не чекати розігріву заново).
 const KEYS = {
   sound: 'vektor.sound',
@@ -7,6 +7,7 @@ const KEYS = {
   hint: 'vektor.hintClosed',
   twelve: 'vektor.twelveKey',
   pairs: 'vektor.spotPairs',
+  otcPairs: 'vektor.otcPairs',
   candles: 'vektor.spotCandles',
 };
 
@@ -47,6 +48,8 @@ export const prefs = {
     return Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : ['EUR/USD'];
   },
   setSpotPairs: (v) => write(KEYS.pairs, v),
+  otcPairs: () => read(KEYS.otcPairs, null), // перевіряє otcAssetsFor
+  setOtcPairs: (v) => write(KEYS.otcPairs, v),
   spotCandles: () => {
     const v = read(KEYS.candles, {});
     return v && typeof v === 'object' && !Array.isArray(v) ? v : {};

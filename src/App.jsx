@@ -15,8 +15,10 @@ import Results from './components/Results.jsx';
 import Toast from './components/Toast.jsx';
 import FeedKey from './components/FeedKey.jsx';
 import { MAX_ACTIVE } from './lib/signal.js';
-import { OTC_ASSETS, spotAssetsFor, pairNames } from './lib/assets.js';
+import { otcAssetsFor, spotAssetsFor, pairNames } from './lib/assets.js';
+import { probeOtc } from './lib/binarium.js';
 import PairPicker from './components/PairPicker.jsx';
+import OtcPairPicker from './components/OtcPairPicker.jsx';
 import {
   isNative,
   startBackground,
@@ -24,6 +26,7 @@ import {
   notifySignal,
   notifyResult,
   createNativeSpotFeed,
+  createNativeOtcFeed,
   nativeCandles,
   onNativeTick,
   batteryUnrestricted,
@@ -33,10 +36,11 @@ import {
 export default function App() {
   const engineRef = useRef(null);
   engineRef.current ??= new Engine({
-    assets: [...spotAssetsFor(prefs.spotPairs()), ...OTC_ASSETS],
+    assets: [...spotAssetsFor(prefs.spotPairs()), ...otcAssetsFor(prefs.otcPairs())],
     savedCandles: prefs.spotCandles(),
-    // В APK ціни Twelve Data тримає нативна служба — вона не засинає разом з WebView.
+    // В APK ціни Twelve Data і Binarium тримає нативна служба — вона не засинає разом з WebView.
     createSpotFeed: isNative() ? createNativeSpotFeed : undefined,
+    createOtcFeed: isNative() ? createNativeOtcFeed : undefined,
   });
   const engine = engineRef.current;
 
@@ -50,6 +54,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [twelveKey, setTwelveKey] = useState(prefs.twelveKey);
   const [spotPairs, setSpotPairs] = useState(() => engine.spotSymbols());
+  const [otcPairs, setOtcPairs] = useState(() => engine.otcPairs());
   const [batteryOk, setBatteryOk] = useState(true);
 
   const soundRef = useRef(sound);
@@ -99,6 +104,7 @@ export default function App() {
     window.addEventListener('pagehide', save);
     // Свічки, які служба назбирала, поки WebView спав, — одразу при старті й поверненні.
     const resync = async () => {
+      engine.resyncOtc();
       engine.restoreSpotCandles(await nativeCandles());
       setBatteryOk(await batteryUnrestricted());
     };
@@ -151,6 +157,14 @@ export default function App() {
     setSnap(engine.snapshot());
   };
 
+  const applyOtcPairs = (list) => {
+    engine.setOtcPairs(otcAssetsFor(list));
+    const now = engine.otcPairs();
+    prefs.setOtcPairs(now);
+    setOtcPairs(now);
+    setSnap(engine.snapshot());
+  };
+
   const closeHint = () => {
     prefs.closeHint();
     setHintOpen(false);
@@ -186,6 +200,14 @@ export default function App() {
               selected={spotPairs}
               onProbe={(symbols, onProgress) => engine.probePairs(symbols, onProgress)}
               onApply={applyPairs}
+            />
+          )}
+          {otc && (
+            <OtcPairPicker
+              key={otcPairs.map((x) => x.binariumId).join()}
+              selected={otcPairs}
+              onProbe={(onProgress) => probeOtc({ onProgress })}
+              onApply={applyOtcPairs}
             />
           )}
           {hintOpen && <Hint onClose={closeHint} />}
@@ -238,7 +260,8 @@ export default function App() {
             </>
           )}
           <p className="disclaimer">
-            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни {pairNames(spotPairs)} — Twelve Data.
+            Сигнали — розрахунок індикаторів, не фінансова порада. Ціни {pairNames(spotPairs)} — Twelve Data, OTC —
+            Binarium.
           </p>
         </div>
       </main>

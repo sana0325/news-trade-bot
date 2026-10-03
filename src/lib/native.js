@@ -7,6 +7,7 @@ import { RESULT_TEXT } from './signal.js';
 import { STRATEGY_LABEL } from './patterns.js';
 import { dirWord, dirHint, fmtPrice } from './format.js';
 import { parseKeys } from './twelvedata.js';
+import { buildFeed, FeedError } from './binarium.js';
 
 const ICON = 'ic_stat_vektor';
 const SIGNALS_CHANNEL = 'signals';
@@ -78,6 +79,56 @@ export function createNativeSpotFeed({ symbols, onPrice, onStatus, onUnavailable
     stop() {
       enabled = false;
       push();
+    },
+  };
+}
+
+// Фід Binarium для рушія: той самий інтерфейс, що й BinariumPoller, але опитує служба —
+// її не гальмують, коли WebView у фоні. Служба віддає сирі відповіді сервера, розбираємо тут.
+export function createNativeOtcFeed({ onData, onError }) {
+  let ids = [];
+  let enabled = false;
+  const parse = (text) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+  VektorFeed.addListener('otc', (e) => {
+    try {
+      const data = buildFeed(
+        {
+          candles: (e.candles || []).map(parse),
+          candleError: e.candleError || null,
+          quotes: e.quotes == null ? null : parse(e.quotes),
+          quoteError: e.quoteError || null,
+        },
+        e.now,
+      );
+      onData(e.id, data, !!e.full);
+    } catch (err) {
+      onError(e.id, err instanceof FeedError ? err.message : 'помилка фіду');
+    }
+  });
+  const push = () => VektorFeed.otcConfigure({ ids, enabled }).catch(() => {});
+  return {
+    setIds(list) {
+      ids = [...list];
+      push();
+    },
+    start() {
+      if (enabled) return;
+      enabled = true;
+      push();
+    },
+    stop() {
+      if (!enabled) return;
+      enabled = false;
+      push();
+    },
+    refresh(id) {
+      VektorFeed.otcRefresh(id == null ? {} : { id }).catch(() => {});
     },
   };
 }

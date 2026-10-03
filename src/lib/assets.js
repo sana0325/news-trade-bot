@@ -45,11 +45,37 @@ export function spotAssetsFor(symbols) {
 
 export const SPOT_ASSETS = spotAssetsFor(DEFAULT_SPOT);
 
-// OTC — публічний графік Binarium (id активу, назва у фіді).
-export const OTC_ASSETS = [
-  { id: 'eurusd-otc', symbol: 'EUR/USD OTC', market: 'otc', binariumId: 43, feedName: 'OTC_EURUSD', base: 1.17, digits: 5, vol: 1.2e-5 },
-  { id: 'gbpusd-otc', symbol: 'GBP/USD OTC', market: 'otc', binariumId: 46, feedName: 'OTC_GBPUSD', base: 1.345, digits: 5, vol: 1.3e-5 },
+// OTC — ціни Binarium (без симуляції). Які пари є, каже сам Binarium: кнопка «Перевірити»
+// бере його список активів з позначкою OTC і перевіряє, чи йдуть по них ціни.
+export const otc = (binariumId, symbol, digits = 5) => ({
+  id: `otc-${binariumId}`,
+  symbol,
+  market: 'otc',
+  digits,
+  feed: 'binarium',
+  binariumId,
+});
+
+// «EUR/USD (OTC)» → «EUR/USD OTC».
+export const otcSymbol = (name) => `${String(name).replace(/\(?\s*OTC\s*\)?/i, '').trim()} OTC`;
+
+export const MAX_OTC_PAIRS = 8;
+export const DEFAULT_OTC = [
+  { binariumId: 43, symbol: 'EUR/USD OTC', digits: 5 },
+  { binariumId: 46, symbol: 'GBP/USD OTC', digits: 5 },
+  { binariumId: 47, symbol: 'USD/JPY OTC', digits: 3 },
+  { binariumId: 48, symbol: 'GOLD OTC', digits: 2 },
 ];
+
+// Збережений вибір [{ binariumId, symbol, digits }] → активи рушія.
+export function otcAssetsFor(list) {
+  const ok = (Array.isArray(list) ? list : []).filter(
+    (x) => Number.isInteger(x?.binariumId) && typeof x.symbol === 'string' && Number.isInteger(x.digits),
+  );
+  return (ok.length ? ok : DEFAULT_OTC).slice(0, MAX_OTC_PAIRS).map((x) => otc(x.binariumId, x.symbol, x.digits));
+}
+
+export const OTC_ASSETS = otcAssetsFor(DEFAULT_OTC);
 
 export const ALL_ASSETS = [...SPOT_ASSETS, ...OTC_ASSETS];
 

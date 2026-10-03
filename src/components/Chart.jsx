@@ -80,7 +80,7 @@ export default function Chart({ asset, candles, signal, now }) {
       <div className="section-head">
         <h2>{asset.symbol}</h2>
         <span className="muted small">
-          свічки 15 с · EMA {EMA_N} · {asset.market === 'spot' ? 'Twelve Data' : asset.live ? 'фід Binarium' : 'симуляція'}
+          свічки 15 с · EMA {EMA_N} · {asset.market === 'spot' ? 'Twelve Data' : 'Binarium'}
         </span>
       </div>
       {signal && (

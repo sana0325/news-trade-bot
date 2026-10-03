@@ -10,12 +10,12 @@ export default function SessionBanner({ session, assets, names }) {
       <div className="banner-title">{otc ? 'Бот перейшов на OTC' : 'Бот на звичайному ринку'}</div>
       <div className="banner-sub">
         {otc
-          ? 'Вихідні: форекс закритий, звичайні пари не торгуються. Лише OTC.'
+          ? 'Вихідні: форекс закритий, звичайні пари не торгуються. Лише OTC за справжніми цінами Binarium.'
           : `Будні: ${names} за справжніми цінами Twelve Data.`}
       </div>
       {otc && (
         <div className="banner-sub">
-          Графік Binarium: {live > 0 ? `наживо ${live} з ${assets.length}` : 'фіду немає, працює симуляція'}
+          Ціни Binarium: {live > 0 ? `наживо ${live} з ${assets.length}` : 'не йдуть, сигналів немає'}
           {problem && <span className="muted"> · {problem}</span>}
         </div>
       )}
