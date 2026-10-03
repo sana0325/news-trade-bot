@@ -55,6 +55,7 @@ export default function App() {
   const [twelveKey, setTwelveKey] = useState(prefs.twelveKey);
   const [spotPairs, setSpotPairs] = useState(() => engine.spotSymbols());
   const [otcPairs, setOtcPairs] = useState(() => engine.otcPairs());
+  const [crowdStats, setCrowdStats] = useState(prefs.crowdStats);
   const [batteryOk, setBatteryOk] = useState(true);
 
   const soundRef = useRef(sound);
@@ -84,6 +85,13 @@ export default function App() {
         // Коли застосунок згорнутий або екран вимкнено — сповіщення Android.
         if (document.visibilityState === 'hidden') notifySignal(ev.signal);
       } else if (ev.type === 'result') {
+        // Рахунок «за / проти натовпу» — на пристрої, щоб за кілька днів було видно, що працює.
+        if (ev.signal.withCrowd != null) {
+          const st = prefs.crowdStats();
+          st[ev.signal.withCrowd ? 'with' : 'against'][ev.signal.status] += 1;
+          prefs.setCrowdStats(st);
+          setCrowdStats(st);
+        }
         if (document.visibilityState === 'hidden') notifyResult(ev.signal, engine.asset(ev.signal.assetId)?.digits ?? 5);
       } else if (ev.type === 'mode') {
         setToast({
@@ -243,7 +251,7 @@ export default function App() {
             )}
           </section>
 
-          <Results results={snap.results} engine={engine} />
+          <Results results={snap.results} engine={engine} crowdStats={crowdStats} />
         </div>
 
         <div className="col">

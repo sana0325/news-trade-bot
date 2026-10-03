@@ -67,6 +67,15 @@ export default function SignalCard({ signal: s, now, price, digits, onOpen }) {
           <span>Осцилятори</span>
           <span className="tnum"><span className="up-text">{oscFor} за</span> · <span className="down-text">{oscAgainst} проти</span></span>
         </div>
+        {s.crowd != null && (
+          <div className="group-line">
+            <span>Натовп Binarium</span>
+            <span className="tnum">
+              {Math.round(s.crowd * 100)}% вгору ·{' '}
+              {s.withCrowd == null ? 'порівну' : s.withCrowd ? 'сигнал за натовпом' : 'сигнал проти натовпу'}
+            </span>
+          </div>
+        )}
       </div>
 
       <ul className="reasons">

@@ -94,7 +94,7 @@ export function buildReasons(votes, ev) {
 
 // strategy: 'indicators' | 'level' | 'wedge'. Для патернів напрямок, впевненість,
 // причини і геометрія (pattern) приходять із patterns.js, голоси — для «за / проти».
-export function createSignal({ asset, votes, ev, price, now, strategy = 'indicators', direction, confidence, reasons, pattern = null }) {
+export function createSignal({ asset, votes, ev, price, now, strategy = 'indicators', direction, confidence, reasons, pattern = null, crowd = null }) {
   const dir = direction ?? ev.direction;
   const call = dir === 'call';
   return {
@@ -114,6 +114,9 @@ export function createSignal({ asset, votes, ev, price, now, strategy = 'indicat
     techSell: ev.techSell,
     trendScore: ev.trendScore,
     reasons: reasons ?? buildReasons(votes, ev),
+    // Думка більшості Binarium на момент сигналу: частка ВГОРУ і чи сигнал з нею збігається.
+    crowd,
+    withCrowd: crowd == null || crowd === 0.5 ? null : call === crowd > 0.5,
     entry: price,
     createdAt: now,
     expiresAt: now + SIGNAL_MS,

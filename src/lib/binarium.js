@@ -274,6 +274,20 @@ export class BinariumPoller {
   }
 }
 
+// ---------- думка більшості ----------
+
+// Частка трейдерів, що ставлять ВГОРУ (0…1). Публічний запит терміналу:
+// GET /rpc/v1.Opinion.GetRatio?asset=43 → { data: { value: 0.742 }, error: null }.
+export const OPINION_MS = 10_000;
+export const opinionUrl = (id) => `${BASE}/rpc/v1.Opinion.GetRatio?asset=${id}`;
+
+export async function fetchOpinion(id) {
+  const json = await getJson(opinionUrl(id));
+  const v = num(json?.data?.value, json?.value);
+  if (v == null || v < 0 || v > 1) throw new FeedError(json?.error?.message || 'немає думки більшості');
+  return v;
+}
+
 // ---------- які OTC-пари є ----------
 
 // Список активів, як у терміналі: сторінками по 250. Беремо ті, що з позначкою OTC.
