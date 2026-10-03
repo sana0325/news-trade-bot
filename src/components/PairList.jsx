@@ -42,6 +42,11 @@ export default function PairList({ assets, signals, selected, onSelect }) {
                       : `розігрів ${a.warmup.have}/${a.warmup.need}`}
                 </span>
               </span>
+              {a.crowd != null && (
+                <span className="pair-row muted small tnum">
+                  натовп: {Math.round(a.crowd * 100)}% вгору
+                </span>
+              )}
             </button>
           );
         })}

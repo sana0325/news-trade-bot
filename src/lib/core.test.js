@@ -13,6 +13,7 @@ import {
   BinariumPoller,
   probeOtc,
   digitsOf,
+  fetchOpinion,
   FeedError,
 } from './binarium.js';
 import { Engine } from './engine.js';
@@ -410,6 +411,24 @@ describe('OTC: опитувач і вибір пар', () => {
     expect(r.fail).toEqual(['APPLE OTC']);
     expect(progress.at(-1)).toBe('3/3');
     expect(r.error).toBe('');
+  });
+
+  it('думка більшості: частка ВГОРУ з GetRatio; «Unauthorized» — помилка', async () => {
+    vi.stubGlobal('fetch', async (url) => {
+      expect(url).toBe('/binarium/rpc/v1.Opinion.GetRatio?asset=43');
+      return res({ data: { value: 0.74233503144493 }, error: null });
+    });
+    expect(await fetchOpinion(43)).toBeCloseTo(0.742, 3);
+    vi.stubGlobal('fetch', async () => res({ data: null, error: { message: 'Unauthorized' } }));
+    await expect(fetchOpinion(43)).rejects.toThrow('Unauthorized');
+  });
+
+  it('сигнал пам’ятає натовп: за чи проти', () => {
+    const ev = { direction: 'call', confidence: 80, buy: 20, sell: 2, total: 25, maBuy: 10, maSell: 1, techBuy: 10, techSell: 1, trendScore: 80 };
+    const a = { id: 'otc-43', symbol: 'EUR/USD OTC' };
+    expect(createSignal({ asset: a, votes: [], ev, price: 1, now: 0, crowd: 0.74 })).toMatchObject({ crowd: 0.74, withCrowd: true });
+    expect(createSignal({ asset: a, votes: [], ev, price: 1, now: 0, crowd: 0.3 }).withCrowd).toBe(false);
+    expect(createSignal({ asset: a, votes: [], ev, price: 1, now: 0 }).withCrowd).toBeNull();
   });
 
   it('«Перевірити»: список активів не прийшов — перевіряємо відомі пари', async () => {

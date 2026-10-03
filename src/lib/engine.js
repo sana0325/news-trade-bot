@@ -11,7 +11,7 @@ import {
   PAIR_PAUSE_MS,
   MIN_CONFIDENCE,
 } from './signal.js';
-import { BinariumPoller } from './binarium.js';
+import { BinariumPoller, fetchOpinion as realFetchOpinion, OPINION_MS } from './binarium.js';
 import { TwelveDataFeed, probePairs as realProbe } from './twelvedata.js';
 import { detectLevelBounce, detectWedgeBreakout, patternConfidence, patternReasons } from './patterns.js';
 
@@ -30,11 +30,13 @@ export class Engine {
     assets = ALL_ASSETS,
     createSpotFeed = defaultSpotFeed,
     createOtcFeed = defaultOtcFeed,
+    fetchOpinion = realFetchOpinion,
     savedCandles = {}, // { 'EUR/USD': [...] } — свічки з минулого запуску
     probe = realProbe,
   } = {}) {
     this.now = now;
     this.probeImpl = probe;
+    this.fetchOpinion = fetchOpinion;
     this.savedCandles = savedCandles;
     this.filter = MIN_CONFIDENCE;
     this.strategies = new Set(['indicators', 'level', 'wedge']);
@@ -98,6 +100,7 @@ export class Engine {
       source: spot ? 'twelvedata' : 'binarium',
       feedAt: 0,
       feedError: null,
+      crowd: null, // { up: 0…1, t } — думка більшості Binarium
       closedT: null,
       closedEv: null,
       patterns: [],
@@ -266,6 +269,8 @@ export class Engine {
       this.emit({ type: 'mode', mode: session.mode });
     } else this.session = session;
 
+    if (this.timer && this.mode === 'otc' && t - (this.opinionAt ?? 0) >= OPINION_MS) this.pollOpinion(t);
+
     // Між цінами свічка триває з останньою ціною; без фіду — стоїть.
     for (const s of this.state.values()) if (this.feedLive(s, t)) pushPrice(s.candles, t, s.price);
 
@@ -335,7 +340,7 @@ export class Engine {
     const { ev, closedEv } = s;
     if (!closedEv || !isStrong(ev, this.filter) || !isStrong(closedEv, this.filter)) return null;
     if (ev.direction !== closedEv.direction) return null;
-    return createSignal({ asset: s.asset, votes: s.votes, ev, price: s.price, now: t });
+    return createSignal({ asset: s.asset, votes: s.votes, ev, price: s.price, now: t, crowd: this.crowdOf(s, t) });
   }
 
   // Відбиття від рівня і пробій клина. Патерн знайдено на закритій свічці,
@@ -367,9 +372,27 @@ export class Engine {
         confidence,
         reasons: patternReasons(p, s.closedEv, s.asset.digits),
         pattern,
+        crowd: this.crowdOf(s, t),
       });
     }
     return null;
+  }
+
+  // Думка більшості по OTC-парах — раз на 10 с. Не прийшла — просто не показуємо.
+  pollOpinion(t = this.now()) {
+    this.opinionAt = t;
+    for (const s of this.state.values()) {
+      if (s.asset.market !== 'otc' || s.opinionPending) continue;
+      s.opinionPending = true;
+      this.fetchOpinion(s.asset.binariumId)
+        .then((up) => (s.crowd = { up, t: this.now() }))
+        .catch(() => {})
+        .finally(() => (s.opinionPending = false));
+    }
+  }
+
+  crowdOf(s, t) {
+    return s.crowd && t - s.crowd.t < 60_000 ? s.crowd.up : null;
   }
 
   // Свічки Binarium. Повна історія замінює все, що було; нове — доливається.
@@ -421,6 +444,7 @@ export class Engine {
           warmup: { have: Math.min(c.length, WARMUP_CANDLES), need: WARMUP_CANDLES },
           unavailable: !!s.unavailable,
           feedError: s.feedError ?? null,
+          crowd: this.crowdOf(s, t),
           ev: s.ev,
         };
       }),

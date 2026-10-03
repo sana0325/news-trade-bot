@@ -8,6 +8,7 @@ const KEYS = {
   twelve: 'vektor.twelveKey',
   pairs: 'vektor.spotPairs',
   otcPairs: 'vektor.otcPairs',
+  crowdStats: 'vektor.crowdStats',
   candles: 'vektor.spotCandles',
 };
 
@@ -50,6 +51,13 @@ export const prefs = {
   setSpotPairs: (v) => write(KEYS.pairs, v),
   otcPairs: () => read(KEYS.otcPairs, null), // перевіряє otcAssetsFor
   setOtcPairs: (v) => write(KEYS.otcPairs, v),
+  // Скільки сигналів за / проти натовпу вгадали: { with: {hit, miss, flat}, against: {...} }.
+  crowdStats: () => {
+    const v = read(KEYS.crowdStats, null);
+    const g = (x) => ({ hit: +x?.hit || 0, miss: +x?.miss || 0, flat: +x?.flat || 0 });
+    return { with: g(v?.with), against: g(v?.against) };
+  },
+  setCrowdStats: (v) => write(KEYS.crowdStats, v),
   spotCandles: () => {
     const v = read(KEYS.candles, {});
     return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
