@@ -13,7 +13,6 @@
 
 import { mkdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 process.env.BINARIUM_BASE ||= 'https://api.binarium.com';
 const { Engine } = await import('../src/lib/engine.js');
@@ -21,8 +20,8 @@ const { probeOtc, fetchOpinion } = await import('../src/lib/binarium.js');
 const { otcAssetsFor, DEFAULT_OTC } = await import('../src/lib/assets.js');
 const { resolveSignal, SIGNAL_MS } = await import('../src/lib/signal.js');
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const FILE = join(ROOT, 'data', 'otc-signals.csv');
+// Файл — у папці data там, звідки запущено скрипт.
+const FILE = join(process.cwd(), 'data', 'otc-signals.csv');
 const HEAD = 'time,pair,strategy,direction,confidence,crowd_up,with_crowd,entry,exit,status';
 const BREAKEVEN = 52; // при виплаті ~92% треба вгадувати більше ніж 52%
 
