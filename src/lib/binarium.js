@@ -14,8 +14,11 @@ const STALE_MS = 3 * 60_000; // найсвіжіші дані старші — �
 
 // В APK (Capacitor) запити йдуть нативно через CapacitorHttp, CORS не заважає — ходимо напряму.
 const isNative = () => globalThis.Capacitor?.isNativePlatform?.() === true;
+// У Node (скрипт збору статистики) хост задає змінна BINARIUM_BASE.
 const BASE = (
-  import.meta.env?.VITE_BINARIUM_BASE ?? (isNative() ? 'https://api.binarium.com' : '/binarium')
+  import.meta.env?.VITE_BINARIUM_BASE ??
+  globalThis.process?.env?.BINARIUM_BASE ??
+  (isNative() ? 'https://api.binarium.com' : '/binarium')
 ).replace(/\/$/, '');
 
 // Помилка фіду з коротким поясненням для банера.
