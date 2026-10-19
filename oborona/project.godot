@@ -1,0 +1,45 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Оборона міста"
+config/description="Мобільний 3D-шутер: оборона українського міста на світанку."
+run/main_scene="res://scenes/MainMenu.tscn"
+config/features=PackedStringArray("4.3", "Mobile")
+
+[autoload]
+
+Config="*res://scripts/Config.gd"
+Settings="*res://scripts/Settings.gd"
+Sfx="*res://scripts/fx/Sfx.gd"
+Fx="*res://scripts/fx/Fx.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=0
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+pointing/emulate_touch_from_mouse=false
+
+[physics]
+
+common/physics_ticks_per_second=60
+3d/default_gravity=9.8
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/size=2048
+lights_and_shadows/directional_shadow/size.mobile=1024
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality.mobile=0
+anti_aliasing/quality/msaa_3d=0
+mesh_lod/lod_change/threshold_pixels=2.0
