@@ -10,8 +10,8 @@
 Якщо файлу немає — використовується запасна процедурна модель.
 
 ### 1. Гвинтівка → `weapons/rifle.glb` (+ `weapons/rifle.json`)
-- Сайт: https://sketchfab.com/search?features=downloadable&licenses=7c23a1ba438d4306920229c12afcb5f9&licenses=322a749bcfa841b29dff1e8a1bb74b0b&type=models&q=assault+rifle
-  (фільтри: Downloadable + ліцензії CC0 / CC-BY).
+- Сайт: https://sketchfab.com/search?q=assault+rifle&type=models — увімкніть фільтри **Downloadable** і ліцензії **CC0** / **CC Attribution**.
+
 - Критерії: реалістична штурмова гвинтівка без логотипів і назв відомих ігор; до ~30 000 трикутників;
   PBR-текстури; бажано з коліматором або планкою під нього.
 - Кнопка Download → формат **glTF Binary (.glb)** → перейменуйте на `rifle.glb`.
