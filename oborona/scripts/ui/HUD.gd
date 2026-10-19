@@ -31,7 +31,7 @@ func _ready() -> void:
 	overlay.draw.connect(_draw_overlay)
 	root.add_child(overlay)
 
-	_ammo = _corner_label(Control.PRESET_TOP_RIGHT, Vector2(-330, 70), 40, HORIZONTAL_ALIGNMENT_RIGHT)
+	_ammo = _corner_label(Control.PRESET_TOP_RIGHT, Vector2(-430, 72), 40, HORIZONTAL_ALIGNMENT_RIGHT)
 	_wave = _corner_label(Control.PRESET_CENTER_TOP, Vector2(-200, 12), 26, HORIZONTAL_ALIGNMENT_CENTER)
 	_kills = _corner_label(Control.PRESET_CENTER_TOP, Vector2(-200, 46), 22, HORIZONTAL_ALIGNMENT_CENTER)
 	_msg = _corner_label(Control.PRESET_CENTER, Vector2(-400, -170), 44, HORIZONTAL_ALIGNMENT_CENTER, 800.0)

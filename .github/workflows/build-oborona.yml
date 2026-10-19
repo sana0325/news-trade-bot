@@ -10,7 +10,8 @@ permissions:
   contents: write
 
 env:
-  GODOT_VERSION: "4.3"
+  GODOT_VERSION: "4.5.1"
+  GODOT_SERIES: "4.5"
   RELEASE_TAG: oborona-latest
 
 jobs:
@@ -46,7 +47,7 @@ jobs:
             -keystore $HOME/debug.keystore -storepass android \
             -dname "CN=Android Debug,O=Android,C=US" -validity 9999
           mkdir -p ~/.config/godot
-          for f in editor_settings-4.tres editor_settings-$GODOT_VERSION.tres; do
+          for f in editor_settings-4.tres editor_settings-$GODOT_SERIES.tres; do
             cat > ~/.config/godot/$f <<EOS
           [gd_resource type="EditorSettings" format=3]
 

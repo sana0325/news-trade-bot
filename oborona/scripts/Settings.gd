@@ -47,7 +47,7 @@ func apply_quality() -> void:
 			vp.msaa_3d = Viewport.MSAA_DISABLED
 			vp.mesh_lod_threshold = 4.0
 		1:
-			vp.scaling_3d_scale = 0.85
+			vp.scaling_3d_scale = 0.8
 			vp.msaa_3d = Viewport.MSAA_DISABLED
 			vp.mesh_lod_threshold = 2.0
 		_:
@@ -55,6 +55,7 @@ func apply_quality() -> void:
 			vp.msaa_3d = Viewport.MSAA_2X
 			vp.mesh_lod_threshold = 1.0
 	Engine.max_fps = 60
+	Mats.apply_quality()
 	changed.emit()
 
 

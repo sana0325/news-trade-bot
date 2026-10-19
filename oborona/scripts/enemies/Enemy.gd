@@ -62,20 +62,21 @@ func _ready() -> void:
 func _build_visual() -> void:
 	_visual = Node3D.new()
 	add_child(_visual)
-	var uniform := StandardMaterial3D.new()
-	uniform.albedo_color = Color(0.32, 0.33, 0.3)
-	var gear := StandardMaterial3D.new()
-	gear.albedo_color = Color(0.18, 0.18, 0.17)
+	var uniform := Mats.get_mat("camo", Color.WHITE, false)
+	var gear := Mats.get_mat("sandbag", Color(0.45, 0.45, 0.38), false)
+	var helmet := Mats.get_mat("camo", Color(0.7, 0.7, 0.65), false)
+	var gun := Mats.get_mat("metal", Color.WHITE, false)
 	var skin := StandardMaterial3D.new()
 	skin.albedo_color = Color(0.55, 0.45, 0.38)
+	skin.roughness = 0.7
 	var parts := [
 		[CapsuleMesh.new(), Vector3(0, 1.15, 0), Vector3(0.5, 0.65, 0.3), uniform],  # тулуб
 		[BoxMesh.new(), Vector3(0, 1.2, 0), Vector3(0.46, 0.45, 0.32), gear],        # жилет
 		[BoxMesh.new(), Vector3(-0.12, 0.45, 0), Vector3(0.17, 0.85, 0.2), uniform], # ноги
 		[BoxMesh.new(), Vector3(0.12, 0.45, 0), Vector3(0.17, 0.85, 0.2), uniform],
 		[SphereMesh.new(), Vector3(0, 1.64, 0), Vector3(0.24, 0.26, 0.24), skin],    # голова
-		[SphereMesh.new(), Vector3(0, 1.72, 0), Vector3(0.3, 0.2, 0.3), gear],       # шолом
-		[BoxMesh.new(), Vector3(0.18, 1.25, -0.35), Vector3(0.06, 0.08, 0.7), gear], # зброя
+		[SphereMesh.new(), Vector3(0, 1.72, 0), Vector3(0.3, 0.2, 0.3), helmet],       # шолом
+		[BoxMesh.new(), Vector3(0.18, 1.25, -0.35), Vector3(0.06, 0.08, 0.7), gun], # зброя
 	]
 	for p in parts:
 		var mi := MeshInstance3D.new()
@@ -100,6 +101,7 @@ func _build_visual() -> void:
 	_muzzle.light_color = Color(1, 0.7, 0.35)
 	_muzzle.omni_range = 4.0
 	_muzzle.light_energy = 0.0
+	_muzzle.visible = false
 	_muzzle.position = Vector3(0.18, 1.25, -0.8)
 	_visual.add_child(_muzzle)
 
@@ -118,7 +120,9 @@ func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		return
 	_state_time += delta
-	_muzzle.light_energy = move_toward(_muzzle.light_energy, 0.0, delta * 40.0)
+	if _muzzle.visible:
+		_muzzle.light_energy = move_toward(_muzzle.light_energy, 0.0, delta * 40.0)
+		_muzzle.visible = _muzzle.light_energy > 0.0
 	if not is_on_floor():
 		velocity.y -= Config.GRAVITY * delta
 	_los_timer -= delta
@@ -277,6 +281,7 @@ func _shoot() -> void:
 	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 120.0, 1 | 2, [get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	_muzzle.light_energy = 2.0
+	_muzzle.visible = true
 	Sfx.play("enemy_shot", from, -3.0)
 	if hit.is_empty():
 		return
