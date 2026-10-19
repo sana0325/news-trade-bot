@@ -66,6 +66,12 @@ func _build_environment() -> void:
 	sky_mat.sun_curve = 0.08
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	# HDRI-небо з assets/ (Poly Haven, CC0), якщо завантажене
+	if ResourceLoader.exists("res://assets/sky/sky.hdr"):
+		var pano := PanoramaSkyMaterial.new()
+		pano.panorama = load("res://assets/sky/sky.hdr")
+		pano.energy_multiplier = 0.9
+		sky.sky_material = pano
 	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY
@@ -73,9 +79,8 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.85
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.1
-	env.tonemap_white = 6.0
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.15
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.5, 0.47, 0.43)
 	env.fog_light_energy = 1.0
@@ -85,15 +90,25 @@ func _build_environment() -> void:
 	env.fog_sky_affect = 0.35
 	env.fog_height = 1.5
 	env.fog_height_density = 0.035
-	env.glow_intensity = 0.5
-	env.glow_bloom = 0.05
-	env.glow_hdr_threshold = 1.2
+	env.glow_intensity = 0.8
+	env.glow_bloom = 0.08
+	env.glow_hdr_threshold = 0.9
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.15
-	env.adjustment_saturation = 0.68
+	env.adjustment_saturation = 0.72
+	# кольорокорекція: холодні сірі тіні, нейтральні півтони, теплі світла (вогонь)
+	var grade := Gradient.new()
+	grade.offsets = PackedFloat32Array([0.0, 0.35, 0.7, 1.0])
+	grade.colors = PackedColorArray([Color(0.02, 0.03, 0.05), Color(0.3, 0.33, 0.36), Color(0.7, 0.69, 0.66), Color(1.0, 0.95, 0.86)])
+	var lut := GradientTexture1D.new()
+	lut.gradient = grade
+	lut.width = 256
+	env.adjustment_color_correction = lut
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
+	_build_vignette()
 
 	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-32, 150, 0)
@@ -111,6 +126,29 @@ func _build_environment() -> void:
 	_arty_light.light_energy = 0.0
 	_arty_light.visible = false
 	add_child(_arty_light)
+
+
+## Віньєтка — дешевий напівпрозорий радіальний градієнт поверх кадру (без читання екрана).
+func _build_vignette() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	add_child(layer)
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	g.colors = PackedColorArray([Color(0, 0, 0, 0), Color(0, 0, 0, 0.08), Color(0, 0, 0, 0.6)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.05, 1.05)
+	tex.width = 256
+	tex.height = 256
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(tr)
 
 
 func _apply_quality() -> void:
@@ -216,7 +254,7 @@ func deco(pos: Vector3, size: Vector3, mat: Material, rot := Vector3.ZERO) -> vo
 # ---------- Геометрія ----------
 
 func _build_ground() -> void:
-	var asphalt := Mats.get_mat("asphalt")
+	var asphalt := Mats.get_mat("asphalt", Color(0.55, 0.55, 0.56))
 	box(Vector3(0, -0.1, 0), Vector3(44, 0.2, HALF_LEN * 2 + 4), asphalt)
 	var pave := Mats.get_mat("pavement", Color(0.95, 0.93, 0.9))
 	var curb := Mats.get_mat("concrete", Color(0.85, 0.84, 0.82))
@@ -244,8 +282,8 @@ func _wall_mat() -> Array:
 			Mats.get_mat("concrete")]
 	elif r < 0.75:
 		var tints := [Color(1, 1, 1), Color(0.95, 0.9, 0.82), Color(0.88, 0.9, 0.95), Color(1.0, 0.92, 0.85)]
-		return [Mats.get_mat("plaster", tints[_rng.randi() % tints.size()]), Mats.get_mat("concrete", Color(0.9, 0.9, 0.9))]
-	return [Mats.get_mat("concrete", Color(0.92, 0.92, 0.9)), Mats.get_mat("concrete", Color(0.75, 0.75, 0.74))]
+		return [Mats.get_mat("plaster", tints[_rng.randi() % tints.size()] * Color(0.85, 0.85, 0.85)), Mats.get_mat("concrete", Color(0.75, 0.75, 0.75))]
+	return [Mats.get_mat("concrete", Color(0.75, 0.75, 0.73)), Mats.get_mat("concrete", Color(0.6, 0.6, 0.59))]
 
 
 func _build_buildings() -> void:
@@ -387,7 +425,7 @@ func _burned_car(pos: Vector3, rot_y: float, smoke: bool) -> void:
 	cover_points.append({"pos": pos - n * 1.6, "dir": n, "owner": null})
 	if smoke:
 		var p := Fx.make_particles(24, 7.0, Vector3.UP, 12.0, Vector2(1.2, 2.2), Vector3(0.4, 0.3, 0),
-			Color(0.1, 0.09, 0.09, 0.65), Color(0.3, 0.3, 0.3, 0), 2.4, 4.0, false, false)
+			Color(0.1, 0.09, 0.09, 0.75), Color(0.3, 0.3, 0.3, 0), 3.0, 4.0, false, false, true)
 		p.visibility_aabb = AABB(Vector3(-10, -2, -10), Vector3(20, 40, 20))
 		p.position = pos + Vector3(0, 1.2, 0)
 		add_child(p)
@@ -458,7 +496,8 @@ func _build_props() -> void:
 		var c := Vector3(_rng.randf_range(-9.0, 9.0), 0, _rng.randf_range(-60, 50))
 		for k in _rng.randi_range(2, 4):
 			var y := 0.12 + k * 0.22
-			_batch_cyl(c + Vector3(0, y - 0.11, 0), c + Vector3(0, y + 0.11, 0), 0.38, tire, 14)
+			if not _prop("tire", c + Vector3(_rng.randf_range(-0.05, 0.05), y - 0.11, 0), Vector3(90, _rng.randf_range(0, 360), 0)):
+				_batch_cyl(c + Vector3(0, y - 0.11, 0), c + Vector3(0, y + 0.11, 0), 0.38, tire, 14)
 		box(c + Vector3(0, 0.5, 0), Vector3(0.7, 1.0, 0.7), null, Vector3.ZERO, "concrete", false)
 	var jersey := Mats.get_mat("concrete", Color(0.9, 0.88, 0.85))
 	for i in 10:
@@ -468,6 +507,9 @@ func _build_props() -> void:
 		deco(p + Vector3(0, 0.65, 0).rotated(Vector3.UP, 0), Vector3(2.0, 0.3, 0.25), jersey, rot)
 		var b := Basis.from_euler(rot * PI / 180.0)
 		cover_points.append({"pos": p + b * Vector3(0, 0, -0.9), "dir": b * Vector3(0, 0, 1), "owner": null})
+	# каністри біля барикад
+	for i in 8:
+		_prop("jerrycan", Vector3(_rng.randf_range(-9, 9), 0, _rng.randf_range(-58, 48)), Vector3(0, _rng.randf_range(0, 360), 0))
 	# пожежі
 	for f in [Vector3(-12.6, 0.3, 18), Vector3(12.2, 0.3, -12), Vector3(-6.5, 1.0, 34), Vector3(-3.5, 1.0, -27), Vector3(12.5, 0.3, -48)]:
 		_fire(f)
@@ -478,7 +520,26 @@ func _build_props() -> void:
 		spawn_points.append(Vector3(8.5, 0.2, z - 6.0))
 
 
+## Готова модель з assets/models (Poly Haven, CC0). Повертає false, якщо моделі немає.
+func _prop(slot: String, pos: Vector3, rot: Vector3, scl := 1.0) -> bool:
+	var path := "res://assets/models/%s/%s.gltf" % [slot, slot]
+	if not ResourceLoader.exists(path):
+		return false
+	var inst: Node3D = (load(path) as PackedScene).instantiate()
+	inst.position = pos
+	inst.rotation_degrees = rot
+	inst.scale = Vector3.ONE * scl
+	add_child(inst)
+	for gi in inst.find_children("*", "GeometryInstance3D", true, false):
+		(gi as GeometryInstance3D).visibility_range_end = 70.0
+	return true
+
+
 func _barrel(p: Vector3, m: Material, lying: bool) -> void:
+	if _prop("barrel", p + (Vector3(0, 0.3, 0) if lying else Vector3.ZERO) - (Vector3(0, 0.3, 0) if lying else Vector3.ZERO),
+			Vector3(90 if lying else 0, _rng.randf_range(0, 360), 0)):
+		box(p + Vector3(0, 0.44, 0), Vector3(0.58, 0.88, 0.58), null, Vector3.ZERO, "metal", false)
+		return
 	var r := 0.29
 	if lying:
 		var dir := Vector3.RIGHT.rotated(Vector3.UP, _rng.randf_range(0, PI))
@@ -494,14 +555,14 @@ func _barrel(p: Vector3, m: Material, lying: bool) -> void:
 ## Вогонь з мерехтливим світлом і стовпом диму.
 func _fire(p: Vector3) -> void:
 	var flame := Fx.make_particles(28, 0.9, Vector3.UP, 15.0, Vector2(0.6, 1.6), Vector3(0, 1.5, 0),
-		Color(1.0, 0.65, 0.25, 0.9), Color(0.9, 0.2, 0.05, 0.0), 0.9, 0.3, true, false)
+		Color(3.0, 1.7, 0.6, 0.9), Color(0.9, 0.2, 0.05, 0.0), 1.1, 0.35, true, false, true)
 	(flame.process_material as ParticleProcessMaterial).emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	(flame.process_material as ParticleProcessMaterial).emission_sphere_radius = 0.5
 	flame.position = p
 	add_child(flame)
 	flame.emitting = true
 	var smoke := Fx.make_particles(26, 10.0, Vector3.UP, 10.0, Vector2(1.5, 2.6), Vector3(0.5, 0.25, 0),
-		Color(0.08, 0.075, 0.07, 0.75), Color(0.25, 0.24, 0.23, 0), 3.0, 5.0, false, false)
+		Color(0.08, 0.075, 0.07, 0.85), Color(0.25, 0.24, 0.23, 0), 3.5, 5.0, false, false, true)
 	smoke.visibility_aabb = AABB(Vector3(-15, -2, -15), Vector3(30, 50, 30))
 	smoke.position = p + Vector3(0, 1.0, 0)
 	add_child(smoke)
@@ -567,7 +628,7 @@ func _build_atmosphere() -> void:
 	for i in 5:
 		var p := Vector3((-1.0 if _rng.randf() < 0.5 else 1.0) * _rng.randf_range(25, 45), 0, _rng.randf_range(-110, 20))
 		var col := Fx.make_particles(30, 14.0, Vector3.UP, 8.0, Vector2(2.0, 3.0), Vector3(0.8, 0.3, 0),
-			Color(0.1, 0.095, 0.09, 0.8), Color(0.3, 0.29, 0.28, 0), 7.0, 4.0, false, false)
+			Color(0.1, 0.095, 0.09, 0.85), Color(0.3, 0.29, 0.28, 0), 8.0, 4.0, false, false, true)
 		col.visibility_aabb = AABB(Vector3(-30, -2, -30), Vector3(60, 80, 60))
 		col.position = p
 		add_child(col)

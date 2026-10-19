@@ -153,6 +153,7 @@ func _look(px: Vector2) -> void:
 		drone.steer(px)
 		return
 	var k := Settings.look_sensitivity * (Config.ADS_LOOK_MULT if ads else 1.0)
+	rifle.look_input(px)
 	rotation.y -= deg_to_rad(px.x * k)
 	pitch = clampf(pitch - deg_to_rad(px.y * k), deg_to_rad(-85), deg_to_rad(85))
 

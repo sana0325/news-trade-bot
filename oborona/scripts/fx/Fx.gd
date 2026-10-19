@@ -3,6 +3,8 @@ extends Node
 
 var _mat_alpha: StandardMaterial3D
 var _mat_add: StandardMaterial3D
+var _mat_smoke: StandardMaterial3D
+var _mat_fire: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -18,6 +20,13 @@ func _ready() -> void:
 	tex.height = 64
 	_mat_alpha = _make_mat(tex, false)
 	_mat_add = _make_mat(tex, true)
+	var flip: Texture2D = load("res://textures/smoke_flipbook.png")
+	_mat_smoke = _make_mat(flip, false)
+	_mat_fire = _make_mat(flip, true)
+	for m in [_mat_smoke, _mat_fire]:
+		m.particles_anim_h_frames = 4
+		m.particles_anim_v_frames = 4
+		m.particles_anim_loop = false
 
 
 func _make_mat(tex: Texture2D, additive: bool) -> StandardMaterial3D:
@@ -35,7 +44,7 @@ func _make_mat(tex: Texture2D, additive: bool) -> StandardMaterial3D:
 ## Створює частинки. Якщо one_shot — вузол сам видаляється.
 func make_particles(amount: int, lifetime: float, dir: Vector3, spread: float, vel: Vector2,
 		gravity: Vector3, col_a: Color, col_b: Color, size: float, grow: float,
-		additive := false, one_shot := true) -> GPUParticles3D:
+		additive := false, one_shot := true, flip := false) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
 	p.amount = maxi(1, int(amount * Settings.particle_mult()))
 	p.lifetime = lifetime
@@ -67,10 +76,17 @@ func make_particles(amount: int, lifetime: float, dir: Vector3, spread: float, v
 	var ct := CurveTexture.new()
 	ct.curve = c
 	m.scale_curve = ct
+	if flip:
+		m.anim_speed_min = 1.0
+		m.anim_speed_max = 1.0
+		m.anim_offset_max = 0.15
 	p.process_material = m
 	var q := QuadMesh.new()
 	q.size = Vector2(size, size)
-	q.material = _mat_add if additive else _mat_alpha
+	if flip:
+		q.material = _mat_fire if additive else _mat_smoke
+	else:
+		q.material = _mat_add if additive else _mat_alpha
 	p.draw_pass_1 = q
 	p.visibility_aabb = AABB(Vector3(-10, -10, -10), Vector3(20, 20, 20))
 	if one_shot:
@@ -121,16 +137,16 @@ func impact(pos: Vector3, normal: Vector3, kind := "dust") -> void:
 				Vector3(0, -4, 0), Color(0.35, 0.3, 0.26, 0.9), Color(0.3, 0.28, 0.25, 0), 0.18, 1.5))
 		_:
 			_emit("dust", pos, normal, func(): return make_particles(10, 0.9, normal, 35.0, Vector2(1, 3),
-				Vector3(0, -2, 0), Color(0.62, 0.57, 0.5, 0.85), Color(0.55, 0.52, 0.48, 0), 0.25, 3.0))
+				Vector3(0, -2, 0), Color(0.62, 0.57, 0.5, 0.85), Color(0.55, 0.52, 0.48, 0), 0.4, 3.0, false, true, true))
 			_emit("chips", pos, normal, func(): return make_particles(5, 0.6, normal, 30.0, Vector2(3, 6),
 				Vector3(0, -9.8, 0), Color(0.4, 0.37, 0.33, 1), Color(0.4, 0.37, 0.33, 1), 0.05, 1.0))
 
 
 func explosion(pos: Vector3) -> void:
 	_emit("fireball", pos, Vector3.UP, func(): return make_particles(26, 0.5, Vector3.UP, 180.0, Vector2(2, 7),
-		Vector3.ZERO, Color(1, 0.75, 0.35, 1), Color(0.8, 0.2, 0.05, 0), 1.3, 2.5, true))
+		Vector3.ZERO, Color(2.5, 1.6, 0.7, 1), Color(0.8, 0.2, 0.05, 0), 1.6, 2.5, true, true, true))
 	_emit("boom_smoke", pos, Vector3.UP, func(): return make_particles(22, 3.5, Vector3.UP, 70.0, Vector2(1, 4),
-		Vector3(0, 0.6, 0), Color(0.22, 0.21, 0.2, 0.85), Color(0.35, 0.34, 0.33, 0), 1.8, 3.5))
+		Vector3(0, 0.6, 0), Color(0.22, 0.21, 0.2, 0.9), Color(0.35, 0.34, 0.33, 0), 2.4, 3.5, false, true, true))
 	_emit("debris", pos, Vector3.UP, func(): return make_particles(24, 1.4, Vector3.UP, 60.0, Vector2(4, 11),
 		Vector3(0, -9.8, 0), Color(0.35, 0.3, 0.25, 1), Color(0.35, 0.3, 0.25, 0.8), 0.12, 1.0))
 	_emit("boom_sparks", pos, Vector3.UP, func(): return make_particles(14, 0.4, Vector3.UP, 90.0, Vector2(8, 16),

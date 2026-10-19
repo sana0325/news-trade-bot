@@ -5,6 +5,7 @@
 Запуск з теки oborona/:  python3 tools/gen_textures.py
 """
 import os
+import sys
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -228,7 +229,7 @@ def camo():
     return rgb, h
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and "--smoke" not in sys.argv:
     for name, fn, strength in [
         ("concrete", concrete, 3.0), ("brick", brick, 4.0), ("plaster", plaster, 3.0),
         ("asphalt", asphalt, 2.5), ("pavement", pavement, 3.0), ("sandbag", sandbag, 2.5),
@@ -236,3 +237,34 @@ if __name__ == "__main__":
     ]:
         rgb, h = fn()
         save(name, rgb, h, strength)
+
+
+def smoke_flipbook(frames=4, size=128):
+    """Фліпбук диму 4×4: клуб, що розширюється й розсіюється (RGBA)."""
+    global N
+    old = N
+    N = size
+    base = fnoise(2.1, n=size)
+    base2 = fnoise(1.7, n=size)
+    sheet = np.zeros((size * frames, size * frames, 4))
+    yy, xx = np.mgrid[0:size, 0:size].astype(float)
+    cx = cy = size / 2
+    for f in range(frames * frames):
+        t = f / (frames * frames - 1)
+        shift = int(t * size * 0.3)
+        n = 0.6 * np.roll(base, shift, 0) + 0.4 * np.roll(base2, -shift, 1)
+        r = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2) / (size * (0.36 + 0.1 * t))
+        mask = np.clip((1.0 - r) * 1.4 + (n - 0.5) * 1.1, 0, 1) ** 1.3
+        alpha = mask * (1.0 - t * 0.55)
+        shade = 0.55 + 0.45 * n - 0.25 * (yy / size)
+        rgb = np.stack([shade] * 3, -1)
+        i, j = f // frames, f % frames
+        sheet[i * size:(i + 1) * size, j * size:(j + 1) * size, :3] = rgb
+        sheet[i * size:(i + 1) * size, j * size:(j + 1) * size, 3] = alpha
+    N = old
+    Image.fromarray((np.clip(sheet, 0, 1) * 255).astype(np.uint8), "RGBA").save(os.path.join(OUT, "smoke_flipbook.png"))
+    print("ok smoke_flipbook")
+
+
+if __name__ == "__main__" and "--smoke" in sys.argv:
+    smoke_flipbook()

@@ -25,13 +25,16 @@ TEXTURES = {
     "fabric": ["fabric", "burlap", "rough"],
     "pavement": ["paving", "pavement", "tiles", "concrete"],
 }
-HDRI = ["overcast", "urban", "cloudy", "city"]
+HDRI = ["overcast", "skies", "cloudy", "grey", "field"]
+# що виключити (небажані збіги: міста з вивісками, інтер'єри, скрині тощо)
+EXCLUDE = ["urban", "city", "interior", "indoor", "treasure", "chest", "sign", "street", "plaza", "platz"]
 MODELS = {
     "barrel": ["barrel", "metal", "oil"],
     "tire": ["tyre", "tire", "wheel"],
     "crate": ["crate", "wooden", "box"],
+    "wood_pallet": ["pallet", "wood"],
+    "bucket": ["bucket", "metal"],
     "jerrycan": ["jerrycan", "canister", "fuel"],
-    "pallet": ["pallet", "wooden"],
     "cinder_block": ["cinder", "block", "concrete"],
 }
 
@@ -56,12 +59,12 @@ def save(url, path):
     print(f"  {os.path.relpath(path, ROOT)}  {len(data) // 1024} KB")
 
 
-def pick(assets, words):
+def pick(assets, words, exclude=EXCLUDE):
     best, best_score = None, -1
     must = words[0]
     for aid, info in assets.items():
         hay = " ".join([aid, info.get("name", "")] + info.get("tags", []) + info.get("categories", [])).lower()
-        if must not in hay:
+        if must not in hay or any(x in hay for x in exclude):
             continue
         score = sum(3 for w in words[1:] if w in hay) + min(info.get("download_count", 0) / 20000.0, 5)
         if score > best_score:
@@ -170,6 +173,9 @@ Poly Haven публікує всі ассети під ліцензією CC0 (�
 
 
 if __name__ == "__main__":
+    import shutil
+    for sub in ("textures", "sky", "models"):
+        shutil.rmtree(os.path.join(ASSETS, sub), ignore_errors=True)
     for step in (fetch_textures, fetch_hdri, fetch_models):
         try:
             step()
