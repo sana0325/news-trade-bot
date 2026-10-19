@@ -1,0 +1,26 @@
+name: Fetch Oborona assets
+
+on:
+  push:
+    branches: ["claude/**"]
+    paths: ["oborona/tools/fetch_assets.py", ".github/workflows/fetch-oborona-assets.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download CC0 assets from Poly Haven
+        run: python3 oborona/tools/fetch_assets.py
+      - name: Commit assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add oborona/assets oborona/CREDITS.md
+          git diff --cached --quiet && { echo "nothing new"; exit 0; }
+          git commit -m "Assets: fetch CC0 textures, HDRI and props from Poly Haven"
+          git push origin HEAD:${GITHUB_REF_NAME}
