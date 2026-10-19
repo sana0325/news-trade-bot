@@ -37,6 +37,7 @@ common/physics_ticks_per_second=60
 
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
+rendering_device/fallback_to_opengl3=true
 textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/size=2048
 lights_and_shadows/directional_shadow/size.mobile=1024

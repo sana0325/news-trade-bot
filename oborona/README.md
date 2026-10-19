@@ -8,7 +8,7 @@
 
 ```
 project.godot            налаштування (Mobile, landscape, autoload)
-export_presets.cfg       Android, тільки arm64-v8a
+export_presets.cfg       Android, arm64-v8a + armeabi-v7a
 scenes/                  MainMenu.tscn, Game.tscn
 scripts/Config.gd        УСІ параметри балансу (autoload Config)
 scripts/Settings.gd      налаштування гравця + якість графіки (autoload Settings)
@@ -58,7 +58,7 @@ tests/SmokeTest.gd       автоматичний headless-тест
    навколо гравця, далекі спалахи артилерії з запізнілим звуком, фоновий гул; одна динамічна тінь (тільки
    на «Високій»), `visibility_range` (HLOD) для дрібних об'єктів, `mesh_lod_threshold`, масштаб 3D-рендеру
    0.67/0.85/1.0, кількість частинок за якістю, ліміт 60 FPS; вібрація при пострілі, шкоді та вибухах.
-5. **Збірка** — `export_presets.cfg` (arm64-v8a, дозвіл VIBRATE, immersive). Інструкція нижче.
+5. **Збірка** — `export_presets.cfg` (arm64-v8a і 32-бітний armeabi-v7a, дозвіл VIBRATE, immersive; без Vulkan гра перемикається на OpenGL). Інструкція нижче.
 
 ## Перевірка
 
