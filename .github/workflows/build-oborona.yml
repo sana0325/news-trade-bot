@@ -85,4 +85,5 @@ jobs:
           gh release view $RELEASE_TAG >/dev/null 2>&1 || \
             gh release create $RELEASE_TAG --title "Оборона міста — остання збірка" \
               --notes "Автоматична debug-збірка для Android (arm64)." --prerelease --target ${{ github.sha }}
-          gh release upload $RELEASE_TAG oborona/build/Oborona.apk --clobber
+          (cd oborona/build && zip -q Oborona-APK.zip Oborona.apk)
+          gh release upload $RELEASE_TAG oborona/build/Oborona.apk oborona/build/Oborona-APK.zip --clobber
