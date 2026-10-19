@@ -120,7 +120,7 @@ func _end(victory: bool) -> void:
 	else:
 		vb.add_child(UiKit.label("ПОРАЗКА", 64, Color(0.95, 0.3, 0.25)))
 		vb.add_child(UiKit.label("Позицію втрачено. Спробуйте ще раз.", 28))
-	vb.add_child(UiKit.label("Знищено ворогів: %d   ·   Хвиль: %d / %d" % [waves.kills, waves.wave + (1 if victory else 0), waves.total_waves()], 26))
+	vb.add_child(UiKit.label("Знищено ворогів: %d   ·   Хвиль: %d / %d" % [waves.kills, maxi(0, waves.wave + (1 if victory else 0)), waves.total_waves()], 26))
 	vb.add_child(UiKit.button("Ще раз", func():
 		get_tree().paused = false
 		get_tree().reload_current_scene()))

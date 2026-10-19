@@ -16,7 +16,7 @@ var last_known := Vector3.ZERO
 var spread: float = Config.ENEMY_BASE_SPREAD
 var cover: Dictionary = {}
 
-var _visual: Node3D
+var _visual: SoldierModel
 var _head_shape: CollisionShape3D
 var _muzzle: OmniLight3D
 var _state_time := 0.0
@@ -60,50 +60,14 @@ func _ready() -> void:
 
 
 func _build_visual() -> void:
-	_visual = Node3D.new()
+	_visual = SoldierModel.new()
 	add_child(_visual)
-	var uniform := Mats.get_mat("camo", Color.WHITE, false)
-	var gear := Mats.get_mat("sandbag", Color(0.45, 0.45, 0.38), false)
-	var helmet := Mats.get_mat("camo", Color(0.7, 0.7, 0.65), false)
-	var gun := Mats.get_mat("metal", Color.WHITE, false)
-	var skin := StandardMaterial3D.new()
-	skin.albedo_color = Color(0.55, 0.45, 0.38)
-	skin.roughness = 0.7
-	var parts := [
-		[CapsuleMesh.new(), Vector3(0, 1.15, 0), Vector3(0.5, 0.65, 0.3), uniform],  # тулуб
-		[BoxMesh.new(), Vector3(0, 1.2, 0), Vector3(0.46, 0.45, 0.32), gear],        # жилет
-		[BoxMesh.new(), Vector3(-0.12, 0.45, 0), Vector3(0.17, 0.85, 0.2), uniform], # ноги
-		[BoxMesh.new(), Vector3(0.12, 0.45, 0), Vector3(0.17, 0.85, 0.2), uniform],
-		[SphereMesh.new(), Vector3(0, 1.64, 0), Vector3(0.24, 0.26, 0.24), skin],    # голова
-		[SphereMesh.new(), Vector3(0, 1.72, 0), Vector3(0.3, 0.2, 0.3), helmet],       # шолом
-		[BoxMesh.new(), Vector3(0.18, 1.25, -0.35), Vector3(0.06, 0.08, 0.7), gun], # зброя
-	]
-	for p in parts:
-		var mi := MeshInstance3D.new()
-		var mesh: PrimitiveMesh = p[0]
-		if mesh is BoxMesh:
-			(mesh as BoxMesh).size = Vector3.ONE
-		elif mesh is SphereMesh:
-			(mesh as SphereMesh).radial_segments = 10
-			(mesh as SphereMesh).rings = 6
-		elif mesh is CapsuleMesh:
-			(mesh as CapsuleMesh).radial_segments = 8
-			(mesh as CapsuleMesh).rings = 2
-			(mesh as CapsuleMesh).radius = 0.5
-			(mesh as CapsuleMesh).height = 1.4
-		mi.mesh = mesh
-		mi.position = p[1]
-		mi.scale = p[2]
-		mi.material_override = p[3]
-		mi.visibility_range_end = 120.0
-		_visual.add_child(mi)
 	_muzzle = OmniLight3D.new()
 	_muzzle.light_color = Color(1, 0.7, 0.35)
 	_muzzle.omni_range = 4.0
 	_muzzle.light_energy = 0.0
 	_muzzle.visible = false
-	_muzzle.position = Vector3(0.18, 1.25, -0.8)
-	_visual.add_child(_muzzle)
+	add_child(_muzzle)
 
 
 func is_head_shape(shape_idx: int) -> bool:
@@ -137,6 +101,8 @@ func _physics_process(delta: float) -> void:
 		_lost_time += delta
 		spread = minf(Config.ENEMY_BASE_SPREAD, spread + Config.ENEMY_SPREAD_DECAY * 0.5 * delta)
 
+	var flat_v := Vector2(velocity.x, velocity.z).length()
+	_visual.animate(delta, flat_v, state == State.SHOOT or state == State.ALERT)
 	match state:
 		State.PATROL:
 			if _move_to(patrol_target, Config.ENEMY_WALK_SPEED, delta):
@@ -270,7 +236,8 @@ func _fire_logic(delta: float) -> void:
 
 
 func _shoot() -> void:
-	var from := global_position + global_basis * Vector3(0.18, 1.3, -0.7)
+	var from := _visual.muzzle_global()
+	_muzzle.global_position = from
 	var target := player.global_position + Vector3(0, randf_range(0.8, player.head.position.y), 0)
 	var dir := (target - from).normalized()
 	var perp := dir.cross(Vector3.UP).normalized()

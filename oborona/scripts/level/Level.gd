@@ -20,6 +20,8 @@ var _batches := {}   # ключ -> {st: SurfaceTool, mat: Material}
 var _rng := RandomNumberGenerator.new()
 var _arty_timer := 3.0
 var _arty_light: OmniLight3D
+var _fire_lights: Array[OmniLight3D] = []
+var _t := 0.0
 
 
 func _ready() -> void:
@@ -42,6 +44,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if follow_target and is_instance_valid(follow_target) and snow:
 		snow.global_position = follow_target.global_position + Vector3(0, 10, 0)
+	_t += delta
+	for i in _fire_lights.size():
+		_fire_lights[i].light_energy = 1.6 + 0.6 * sin(_t * 13.0 + i * 2.1) + 0.4 * sin(_t * 7.3 + i)
 	_arty_timer -= delta
 	if _arty_timer <= 0.0:
 		_arty_timer = _rng.randf_range(4.0, 11.0)
@@ -52,10 +57,10 @@ func _process(delta: float) -> void:
 
 func _build_environment() -> void:
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.2, 0.26, 0.4)
-	sky_mat.sky_horizon_color = Color(0.92, 0.6, 0.42)
+	sky_mat.sky_top_color = Color(0.3, 0.3, 0.31)
+	sky_mat.sky_horizon_color = Color(0.62, 0.55, 0.47)
 	sky_mat.sky_curve = 0.12
-	sky_mat.ground_horizon_color = Color(0.5, 0.38, 0.32)
+	sky_mat.ground_horizon_color = Color(0.45, 0.4, 0.35)
 	sky_mat.ground_bottom_color = Color(0.12, 0.1, 0.1)
 	sky_mat.sun_angle_max = 25.0
 	sky_mat.sun_curve = 0.08
@@ -66,13 +71,13 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.75
+	env.ambient_light_energy = 0.85
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.1
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.7, 0.58, 0.52)
+	env.fog_light_color = Color(0.5, 0.47, 0.43)
 	env.fog_light_energy = 1.0
 	env.fog_sun_scatter = 0.35
 	env.fog_density = 0.016
@@ -84,16 +89,16 @@ func _build_environment() -> void:
 	env.glow_bloom = 0.05
 	env.glow_hdr_threshold = 1.2
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.08
-	env.adjustment_saturation = 0.88
+	env.adjustment_contrast = 1.15
+	env.adjustment_saturation = 0.68
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-14, 160, 0)
-	sun.light_color = Color(1.0, 0.74, 0.52)
-	sun.light_energy = 1.6
+	sun.rotation_degrees = Vector3(-32, 150, 0)
+	sun.light_color = Color(1.0, 0.86, 0.7)
+	sun.light_energy = 1.25
 	sun.shadow_bias = 0.04
 	sun.shadow_normal_bias = 1.5
 	sun.shadow_blur = 1.5
@@ -118,7 +123,7 @@ func _apply_quality() -> void:
 	if snow:
 		snow.amount = [200, 500, 1000][q]
 	for s in smokes:
-		s.amount = [10, 20, 34][q]
+		s.amount = [10, 18, 28][q]
 
 
 # ---------- Об'єднання геометрії ----------
@@ -134,13 +139,21 @@ const _FACES := [
 
 
 ## Додає бокс до спільного меша (за матеріалом і ділянкою вулиці).
-func _batch_box(xf: Transform3D, size: Vector3, mat: Material) -> void:
-	var key := "%d|%d" % [mat.get_instance_id(), int(floor((xf.origin.z + 80.0) / CHUNK))]
+func _batch_st(mat: Material, z: float) -> SurfaceTool:
+	var key := "%d|%d" % [mat.get_instance_id(), int(floor((z + 80.0) / CHUNK))]
 	if not _batches.has(key):
 		var st0 := SurfaceTool.new()
 		st0.begin(Mesh.PRIMITIVE_TRIANGLES)
 		_batches[key] = {"st": st0, "mat": mat}
-	var st: SurfaceTool = _batches[key]["st"]
+	return _batches[key]["st"]
+
+
+func _batch_cyl(a: Vector3, b: Vector3, r: float, mat: Material, seg := 12) -> void:
+	RifleMesh._cyl(_batch_st(mat, a.z), a, b, r, seg)
+
+
+func _batch_box(xf: Transform3D, size: Vector3, mat: Material) -> void:
+	var st := _batch_st(mat, xf.origin.z)
 	var h := size * 0.5
 	for f in _FACES:
 		var n: Vector3 = f[0]
@@ -363,9 +376,12 @@ func _burned_car(pos: Vector3, rot_y: float, smoke: bool) -> void:
 	var base := _xf(pos + Vector3(0, 0.62, 0), Vector3(0, rot_y, tilt))
 	_batch_box(base * _xf(Vector3(0, 0.62, -0.2), Vector3.ZERO), Vector3(1.6, 0.5, 2.1), body_m)       # кабіна
 	_batch_box(base * _xf(Vector3(0, 0.62, -0.2), Vector3.ZERO), Vector3(1.62, 0.32, 1.9), dark)        # вигорілі вікна
-	for wx in [-0.88, 0.88]:
+	var tire := Mats.get_mat("metal", Color(0.3, 0.3, 0.3))
+	for wx in [-0.84, 0.84]:
 		for wz in [-1.35, 1.35]:
-			_batch_box(base * _xf(Vector3(wx, -0.38, wz), Vector3.ZERO), Vector3(0.22, 0.55, 0.55), dark)
+			var c: Vector3 = base * Vector3(wx, -0.33, wz)
+			var ax: Vector3 = base.basis.x.normalized() * 0.11
+			_batch_cyl(c - ax, c + ax, 0.3, tire, 14)
 	var n := Basis(Vector3.UP, deg_to_rad(rot_y)) * Vector3(1, 0, 0)
 	cover_points.append({"pos": pos + n * 1.6, "dir": -n, "owner": null})
 	cover_points.append({"pos": pos - n * 1.6, "dir": n, "owner": null})
@@ -426,11 +442,78 @@ func _build_props() -> void:
 				prev_top[s] = top
 	for i in 6:
 		_rubble(Vector3(_rng.randf_range(-7, 7), 0, _rng.randf_range(-58, 50)), 1.5, "concrete", Color(0.85, 0.84, 0.82), 6)
+	# бочки, шини, бетонні блоки «джерсі»
+	var barrel_tints := [Color(0.55, 0.6, 0.65), Color(0.7, 0.45, 0.35), Color(0.55, 0.55, 0.5)]
+	for i in 14:
+		var c := Vector3(_rng.randf_range(-9.0, 9.0), 0, _rng.randf_range(-60, 50))
+		var m := Mats.get_mat("rust", barrel_tints[i % 3])
+		for k in _rng.randi_range(1, 3):
+			var p := c + Vector3(k * 0.62, 0, _rng.randf_range(-0.2, 0.2))
+			if _rng.randf() < 0.25:
+				_barrel(p + Vector3(0, 0.3, 0), m, true)
+			else:
+				_barrel(p, m, false)
+	var tire := Mats.get_mat("metal", Color(0.28, 0.28, 0.28))
+	for i in 6:
+		var c := Vector3(_rng.randf_range(-9.0, 9.0), 0, _rng.randf_range(-60, 50))
+		for k in _rng.randi_range(2, 4):
+			var y := 0.12 + k * 0.22
+			_batch_cyl(c + Vector3(0, y - 0.11, 0), c + Vector3(0, y + 0.11, 0), 0.38, tire, 14)
+		box(c + Vector3(0, 0.5, 0), Vector3(0.7, 1.0, 0.7), null, Vector3.ZERO, "concrete", false)
+	var jersey := Mats.get_mat("concrete", Color(0.9, 0.88, 0.85))
+	for i in 10:
+		var p := Vector3((-1.0 if _rng.randf() < 0.5 else 1.0) * _rng.randf_range(2.0, 9.0), 0, _rng.randf_range(-58, 48))
+		var rot := Vector3(0, _rng.randf_range(-40, 40) + (90.0 if _rng.randf() < 0.3 else 0.0), 0)
+		box(p + Vector3(0, 0.25, 0), Vector3(2.0, 0.5, 0.6), jersey, rot)
+		deco(p + Vector3(0, 0.65, 0).rotated(Vector3.UP, 0), Vector3(2.0, 0.3, 0.25), jersey, rot)
+		var b := Basis.from_euler(rot * PI / 180.0)
+		cover_points.append({"pos": p + b * Vector3(0, 0, -0.9), "dir": b * Vector3(0, 0, 1), "owner": null})
+	# пожежі
+	for f in [Vector3(-12.6, 0.3, 18), Vector3(12.2, 0.3, -12), Vector3(-6.5, 1.0, 34), Vector3(-3.5, 1.0, -27), Vector3(12.5, 0.3, -48)]:
+		_fire(f)
 	for x in [-7.0, -2.0, 3.0, 8.0]:
 		spawn_points.append(Vector3(x, 0.2, -62))
 	for z in [-30.0, -10.0, 10.0]:
 		spawn_points.append(Vector3(-8.5, 0.2, z))
 		spawn_points.append(Vector3(8.5, 0.2, z - 6.0))
+
+
+func _barrel(p: Vector3, m: Material, lying: bool) -> void:
+	var r := 0.29
+	if lying:
+		var dir := Vector3.RIGHT.rotated(Vector3.UP, _rng.randf_range(0, PI))
+		_batch_cyl(p - dir * 0.44, p + dir * 0.44, r, m, 14)
+		box(p, Vector3(0.58, 0.58, 0.88), null, Vector3(0, rad_to_deg(atan2(dir.x, dir.z)), 0), "metal", false)
+	else:
+		_batch_cyl(p, p + Vector3(0, 0.88, 0), r, m, 14)
+		for y in [0.29, 0.59]:
+			_batch_cyl(p + Vector3(0, y - 0.015, 0), p + Vector3(0, y + 0.015, 0), r + 0.012, m, 14)
+		box(p + Vector3(0, 0.44, 0), Vector3(0.58, 0.88, 0.58), null, Vector3.ZERO, "metal", false)
+
+
+## Вогонь з мерехтливим світлом і стовпом диму.
+func _fire(p: Vector3) -> void:
+	var flame := Fx.make_particles(28, 0.9, Vector3.UP, 15.0, Vector2(0.6, 1.6), Vector3(0, 1.5, 0),
+		Color(1.0, 0.65, 0.25, 0.9), Color(0.9, 0.2, 0.05, 0.0), 0.9, 0.3, true, false)
+	(flame.process_material as ParticleProcessMaterial).emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	(flame.process_material as ParticleProcessMaterial).emission_sphere_radius = 0.5
+	flame.position = p
+	add_child(flame)
+	flame.emitting = true
+	var smoke := Fx.make_particles(26, 10.0, Vector3.UP, 10.0, Vector2(1.5, 2.6), Vector3(0.5, 0.25, 0),
+		Color(0.08, 0.075, 0.07, 0.75), Color(0.25, 0.24, 0.23, 0), 3.0, 5.0, false, false)
+	smoke.visibility_aabb = AABB(Vector3(-15, -2, -15), Vector3(30, 50, 30))
+	smoke.position = p + Vector3(0, 1.0, 0)
+	add_child(smoke)
+	smoke.emitting = true
+	smokes.append(smoke)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.55, 0.2)
+	l.omni_range = 7.0
+	l.light_energy = 2.0
+	l.position = p + Vector3(0, 1.0, 0)
+	add_child(l)
+	_fire_lights.append(l)
 
 
 func _build_bounds() -> void:
@@ -481,6 +564,15 @@ func _build_atmosphere() -> void:
 	add_child(snow)
 	snow.global_position = player_start + Vector3(0, 10, 0)
 	snow.emitting = true
+	for i in 5:
+		var p := Vector3((-1.0 if _rng.randf() < 0.5 else 1.0) * _rng.randf_range(25, 45), 0, _rng.randf_range(-110, 20))
+		var col := Fx.make_particles(30, 14.0, Vector3.UP, 8.0, Vector2(2.0, 3.0), Vector3(0.8, 0.3, 0),
+			Color(0.1, 0.095, 0.09, 0.8), Color(0.3, 0.29, 0.28, 0), 7.0, 4.0, false, false)
+		col.visibility_aabb = AABB(Vector3(-30, -2, -30), Vector3(60, 80, 60))
+		col.position = p
+		add_child(col)
+		col.emitting = true
+		smokes.append(col)
 
 
 func _artillery_flash() -> void:

@@ -25,6 +25,14 @@ func _process(_d: float) -> bool:
 	if g == null or not g.has_method("_pause"):
 		return false
 	g.waves.active = false
+	g.player.health = 100.0
+	if frame == 10:
+		for k in 3:
+			var e = load("res://scripts/enemies/Enemy.gd").new()
+			e.player = g.player
+			e.level = g.level
+			e.position = Vector3(-2.0 + k * 2.2, 0.1, 22.0 - k * 1.5)
+			g.add_child(e)
 	g.hud.visible = frame < 240
 	for i in shots.size():
 		var s: Array = shots[i]
