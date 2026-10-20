@@ -28,3 +28,6 @@ Poly Haven публікує всі ассети під ліцензією CC0 (�
 
 | Тип | Файл | Назва | Автор | Джерело | Ліцензія |
 |---|---|---|---|---|---|
+
+## Meshy AI (згенеровано автором гри)
+- `assets/weapons/rifle.glb` і все в `assets/meshy/` — концепти в Google Gemini, 3D у Meshy AI (Image to 3D), оптимізовано gltf-transform (simplify + текстури 1024). Перед комерційним релізом перевір умови тарифу Meshy.
