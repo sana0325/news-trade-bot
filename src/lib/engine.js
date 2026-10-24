@@ -31,12 +31,16 @@ export class Engine {
     createSpotFeed = defaultSpotFeed,
     createOtcFeed = defaultOtcFeed,
     fetchOpinion = realFetchOpinion,
+    forceMode = null, // 'otc' — завжди OTC, незалежно від сесії (збір статистики)
+    maxActive = MAX_ACTIVE,
     savedCandles = {}, // { 'EUR/USD': [...] } — свічки з минулого запуску
     probe = realProbe,
   } = {}) {
     this.now = now;
     this.probeImpl = probe;
     this.fetchOpinion = fetchOpinion;
+    this.forceMode = forceMode;
+    this.maxActive = maxActive;
     this.savedCandles = savedCandles;
     this.filter = MIN_CONFIDENCE;
     this.strategies = new Set(['indicators', 'level', 'wedge']);
@@ -221,7 +225,7 @@ export class Engine {
   }
 
   get mode() {
-    return this.session.mode;
+    return this.forceMode ?? this.session.mode;
   }
 
   visibleAssets() {
@@ -320,7 +324,7 @@ export class Engine {
 
   canSignal(s, t) {
     if (!this.feedLive(s, t)) return false; // ціни не йдуть — сигналів немає
-    if (this.signals.length >= MAX_ACTIVE) return false;
+    if (this.signals.length >= this.maxActive) return false;
     if (this.signals.some((x) => x.assetId === s.asset.id)) return false;
     const end = this.lastEnd.get(s.asset.id);
     return end == null || t - end >= PAIR_PAUSE_MS;
