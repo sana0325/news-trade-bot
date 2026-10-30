@@ -8,6 +8,7 @@
 - Файли зберігаються лише на пристрої (IndexedDB).
 
 Готовий APK (пряме завантаження): https://github.com/sana0325/news-trade-bot/releases/download/office-latest/office.apk
+Архівом: https://github.com/sana0325/news-trade-bot/releases/download/office-latest/office.zip
 
 ```bash
 cd office

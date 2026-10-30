@@ -44,6 +44,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk ../office.apk
+          cd .. && zip -j office.zip office.apk
 
       # Постійне посилання на пряме завантаження:
       # https://github.com/<owner>/<repo>/releases/download/office-latest/office.apk
@@ -53,5 +54,7 @@ jobs:
           tag_name: office-latest
           name: Офіс (остання збірка)
           prerelease: true
-          files: office/office.apk
+          files: |
+            office/office.apk
+            office/office.zip
           overwrite_files: true
