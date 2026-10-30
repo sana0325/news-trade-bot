@@ -7,6 +7,8 @@
 - Перегляд: PDF (pdf.js), Word .docx (mammoth), Excel .xlsx/.xls/.csv/.ods (SheetJS, вкладки аркушів), текстові файли.
 - Файли зберігаються лише на пристрої (IndexedDB).
 
+Готовий APK (пряме завантаження): https://github.com/sana0325/news-trade-bot/releases/download/office-latest/office.apk
+
 ```bash
 cd office
 npm install

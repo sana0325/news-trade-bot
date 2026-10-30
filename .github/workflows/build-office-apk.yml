@@ -1,0 +1,57 @@
+name: Build Office APK
+
+on:
+  push:
+    branches: [main, develop, "claude/**", "ccr-**"]
+    paths: ["office/**", ".github/workflows/build-office-apk.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: office
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: office/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36"
+
+      - name: Build debug APK
+        working-directory: office/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../office.apk
+
+      # Постійне посилання на пряме завантаження:
+      # https://github.com/<owner>/<repo>/releases/download/office-latest/office.apk
+      - name: Publish to release office-latest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: office-latest
+          name: Офіс (остання збірка)
+          prerelease: true
+          files: office/office.apk
+          overwrite_files: true
