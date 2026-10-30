@@ -54,7 +54,17 @@ button { font: inherit; cursor: pointer; }
 .viewer .tabs { background: #fff; padding: 8px; }
 .viewer-body { flex: 1; overflow: auto; padding: 8px; }
 .pdf-page { display: block; margin: 0 auto 8px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); max-width: 100%; }
-.doc { background: #fff; padding: 24px 20px; line-height: 1.6; max-width: 800px; margin: 0 auto; overflow-wrap: anywhere; }
+.zoombar { display: flex; gap: 6px; justify-content: center; padding: 6px; background: #fff; border-bottom: 1px solid #e6e6ea; }
+.zoombar button { border: 1px solid #e3e3e8; background: #fff; border-radius: 10px; min-width: 40px; height: 34px; font-size: 18px; }
+.zoombar .zoom-fit { font-size: 13px; padding: 0 12px; }
+.content { width: max-content; min-width: 100%; margin: 0 auto; }
+.content-pdf, .content-text { width: auto; }
+/* Сторінка A4 (96 dpi), як у Word; широкі таблиці розширюють її. */
+.doc { background: #fff; padding: 48px 56px; line-height: 1.5; display: table; width: 794px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15); font-size: 15px; }
+.doc p { margin: 0 0 .6em; max-width: 682px; }
+.doc table p { max-width: none; margin: 0; }
+.doc td, .doc th { vertical-align: top; min-width: 60px; max-width: 320px; word-break: normal; overflow-wrap: normal; }
 .doc img { max-width: 100%; }
 .doc table { border-collapse: collapse; } .doc td, .doc th { border: 1px solid #ccc; padding: 4px; }
 .sheet { background: #fff; overflow: auto; }
