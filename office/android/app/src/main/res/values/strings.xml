@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Офіс</string>
+    <string name="title_activity_main">Офіс</string>
+    <string name="package_name">com.officedocs.app</string>
+    <string name="custom_url_scheme">com.officedocs.app</string>
+</resources>

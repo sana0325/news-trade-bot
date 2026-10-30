@@ -1,0 +1,6 @@
+{
+  "appId": "com.officedocs.app",
+  "appName": "Офіс",
+  "webDir": "dist",
+  "android": { "backgroundColor": "#ffffff" }
+}
