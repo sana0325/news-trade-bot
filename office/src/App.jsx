@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Splash, { Logo } from './Splash.jsx';
 import Viewer from './Viewer.jsx';
+import { listenIncoming } from './incoming.js';
 import { listFiles, saveFile, deleteFile } from './storage.js';
 import { ACCEPT, KINDS, kindOf, formatSize } from './types.js';
 
@@ -17,6 +18,16 @@ export default function App() {
 
   const reload = () => listFiles().then((f) => setFiles(f.sort((a, b) => b.openedAt - a.openedAt))).catch(() => {});
   useEffect(() => { reload(); }, []);
+
+  useEffect(() => listenIncoming(async ({ name, data }) => {
+    const kind = kindOf(name, data);
+    if (!kind) { setNotice(`Формат файлу «${name}» не підтримується`); return; }
+    const rec = { id: `${name}-${data.byteLength}`, name, size: data.byteLength, kind, openedAt: Date.now(), data };
+    await saveFile(rec);
+    setSplash(false);
+    setOpen(rec);
+    reload();
+  }, (err) => setNotice(`Не вдалося відкрити файл: ${err}`)), []);
   const endSplash = useCallback(() => setSplash(false), []);
 
   async function addFiles(list) {

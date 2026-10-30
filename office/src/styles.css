@@ -1,6 +1,7 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
-body { font-family: Poppins, system-ui, sans-serif; background: #fff; color: #1d1d1f; -webkit-tap-highlight-color: transparent; }
+body { padding: max(env(safe-area-inset-top), var(--safe-area-inset-top, 0px)) 0 max(env(safe-area-inset-bottom), var(--safe-area-inset-bottom, 0px));
+  box-sizing: border-box; font-family: Poppins, system-ui, sans-serif; background: #fff; color: #1d1d1f; -webkit-tap-highlight-color: transparent; }
 button { font: inherit; cursor: pointer; }
 .muted { color: #888; } .small { font-size: 12px; } .center { text-align: center; padding: 24px; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

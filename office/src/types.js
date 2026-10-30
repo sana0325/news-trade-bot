@@ -5,9 +5,15 @@ export const KINDS = {
   text: { label: 'Текст', color: '#7a52d1', exts: ['txt', 'md', 'json', 'log', 'xml', 'html'] },
 };
 
-export function kindOf(name) {
+export function kindOf(name, data) {
   const ext = name.split('.').pop().toLowerCase();
-  return Object.keys(KINDS).find((k) => KINDS[k].exts.includes(ext)) || null;
+  const byExt = Object.keys(KINDS).find((k) => KINDS[k].exts.includes(ext));
+  if (byExt || !data) return byExt || null;
+  // Без розширення: вгадуємо за першими байтами.
+  const head = new TextDecoder().decode(new Uint8Array(data, 0, Math.min(4096, data.byteLength)));
+  if (head.startsWith('%PDF')) return 'pdf';
+  if (head.startsWith('PK')) return head.includes('word/') ? 'word' : head.includes('xl/') ? 'excel' : null;
+  return null;
 }
 
 export const ACCEPT = Object.values(KINDS).flatMap((k) => k.exts.map((e) => '.' + e)).join(',');
