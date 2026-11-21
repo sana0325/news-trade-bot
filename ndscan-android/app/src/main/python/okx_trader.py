@@ -10,9 +10,14 @@ okx_trader — автоторгівля сигналами ndscan на OKX (USDT
   "lever": 3,               # плече (isolated)
   "max_pos": 3,             # макс. одночасних позицій
   "max_spread_pct": 1.0,    # макс. спред bid/ask у % (захист від неліквідного прострілу)
-  "types": ["CEX_IN","CEX_OUT","FRESH_BUY","WATCH_OUT"]  # які сигнали торгувати (лонг і шорт)
+  "types": ["CEX_IN","CEX_OUT","FRESH_BUY","WATCH_OUT"],  # які сигнали торгувати (лонг і шорт)
+  "auto_ladder": true,      # розгін «драбинкою»: маржа від балансу замість фіксованого trade_usd
+  "margin_pct": 0.45,       # частка бази драбинки на одну угоду (маржа); notional = маржа * lever
+  "ladder_steps": [100, 140, 200, 280, 400, 560, 800, 1100],  # сходинки балансу USDT
+  "step_down_dd_pct": 20.0  # просадка від сходинки або її піку -> база на сходинку нижче
 }
 Угоди: trades.json (відкриті), trades.csv (журнал: рядок OPEN при вході, CLOSE з PnL при виході).
+Драбинка: trader_state.json (пік балансу, активна сходинка, рівень відновлення після відкату).
 """
 import base64, csv, hmac, hashlib, json, os, time
 from datetime import datetime, timezone
@@ -65,6 +70,43 @@ def _round(x, step, mode=ROUND_DOWN):
     return float((Decimal(str(x)) / s).to_integral_value(mode) * s)
 
 
+DEFAULT_STEPS = [100, 140, 200, 280, 400, 560, 800, 1100]
+
+
+def ladder_eval(bal, steps, st, dd_pct):
+    """
+    Драбинка розгону. bal — закритий баланс USDT (без нереалізованого PnL).
+    st — стан {"peak_equity", "step_idx", "step_peak", "recover_at"}; повертає (база, новий стан, примітка).
+    - сходинка = найбільший поріг <= bal; нижче першого порогу база = сам баланс;
+    - просадка >= dd_pct від порогу сходинки або від її піку -> на сходинку нижче;
+      нижча сходинка тримається, доки баланс не відновить пік, з якого почалась просадка (recover_at).
+    """
+    st = dict(st or {})
+    k = 1 - dd_pct / 100
+    nominal = max((i for i, v in enumerate(steps) if v <= bal), default=-1)
+    st["peak_equity"] = max(float(st.get("peak_equity") or 0), bal)
+    act = st.get("step_idx")
+    if act is None or not -1 <= act < len(steps):
+        act, st["step_peak"] = nominal, bal
+    rec = st.get("recover_at")
+    note = ""
+    if rec is not None and bal >= rec:
+        rec, note = None, "баланс відновився — блокування сходинки знято"
+    if nominal > act and rec is None:
+        act, st["step_peak"], note = nominal, bal, f"вгору на сходинку {steps[nominal]:g}"
+    elif nominal < act:
+        act, st["step_peak"], note = nominal, bal, ("вниз: баланс нижче порогу " + (f"{steps[nominal]:g}" if nominal >= 0 else "першої сходинки"))
+    st["step_peak"] = max(float(st.get("step_peak") or bal), bal)
+    if act >= 0 and (bal <= steps[act] * k or bal <= st["step_peak"] * k):
+        rec = max(rec or 0, st["step_peak"], steps[act])
+        note = (f"просадка {(1 - bal / st['step_peak']) * 100:.1f}% від піку {st['step_peak']:g} — відкат зі сходинки "
+                f"{steps[act]:g} на {steps[act - 1]:g}" if act > 0 else f"просадка — нижче першої сходинки")
+        act, st["step_peak"] = act - 1, bal
+    st["step_idx"], st["recover_at"] = act, rec
+    base = float(steps[act]) if act >= 0 else bal
+    return base, st, note
+
+
 class Trader:
     def __init__(self, cfg_path, data_dir, log, window_h=6, eval_h=24, target=5, stop=3):
         cfg = json.load(open(cfg_path, encoding="utf-8-sig"))
@@ -75,8 +117,14 @@ class Trader:
         self.max_pos = int(cfg.get("max_pos", 3))
         self.max_spread_pct = float(cfg.get("max_spread_pct", 1.0))
         self.types = set(cfg.get("types", ["CEX_IN", "CEX_OUT", "FRESH_BUY", "WATCH_OUT"]))
+        self.auto_ladder = bool(cfg.get("auto_ladder", True))
+        self.margin_pct = float(cfg.get("margin_pct", 0.45))
+        self.steps = sorted(float(x) for x in (cfg.get("ladder_steps") or DEFAULT_STEPS))
+        self.dd_pct = float(cfg.get("step_down_dd_pct", 20.0))
         self.api = OKX(cfg["key"], cfg["secret"], cfg["passphrase"], cfg.get("demo", True))
         self.f_open, self.f_csv, self.f_last = (os.path.join(data_dir, f) for f in ("trades.json", "trades.csv", "trades_last.json"))
+        self.f_ladder = os.path.join(data_dir, "trader_state.json")
+        self.ladder = self._load(self.f_ladder, {})  # драбинка: пік, сходинка, рівень відновлення
         self.trades = self._load(self.f_open, {})   # instId -> trade
         self.last = self._load(self.f_last, {})     # "symbol|dir" -> ts останньої угоди
         acc = self.api.req("GET", "/api/v5/account/config")[0]
@@ -88,8 +136,44 @@ class Trader:
                 self.inst[i["instId"].split("-")[0]] = i
         self.log(f"OKX {'ДЕМО' if self.api.demo else 'РЕАЛ'}: баланс {float(bal.get('totalEq') or 0):,.2f}$, "
                  f"свопів {len(self.inst)}, режим {'long/short' if self.hedge else 'net'}, "
-                 f"угода {self.usd:g}$ x{self.lever}, макс {self.max_pos}, спред<={self.max_spread_pct}%, "
+                 f"угода {'драбинкою' if self.auto_ladder else f'{self.usd:g}$'} x{self.lever}, макс {self.max_pos}, спред<={self.max_spread_pct}%, "
                  f"типи {sorted(self.types)}, {'УВІМКНЕНО' if self.enabled else 'ВИМКНЕНО'}")
+        if self.auto_ladder:
+            self.log(f"OKX драбинка: сходинки {[f'{x:g}' for x in self.steps]}, маржа {self.margin_pct * 100:g}% бази, "
+                     f"відкат при просадці {self.dd_pct:g}%")
+            self._position_size("старт", self._closed_balance(bal))
+
+    @staticmethod
+    def _closed_balance(bal):
+        """Закритий баланс USDT: cashBal (без нереалізованого PnL), інакше availEq / availBal."""
+        for d in bal.get("details") or []:
+            if d.get("ccy") == "USDT":
+                for k in ("cashBal", "availEq", "availBal"):
+                    if d.get(k) not in (None, ""):
+                        return float(d[k])
+        return None
+
+    def _position_size(self, tag, balance=None):
+        """Номінал угоди, $: драбинка від балансу або статичний trade_usd (fallback)."""
+        if not self.auto_ladder:
+            return self.usd
+        if balance is None:
+            try:
+                balance = self._closed_balance(self.api.req("GET", "/api/v5/account/balance", {"ccy": "USDT"})[0])
+            except OKXError as e:
+                self.log(f"{tag}: баланс OKX недоступний ({e}) — fallback на trade_usd {self.usd:g}$"); return self.usd
+        if balance is None:
+            self.log(f"{tag}: у відповіді OKX немає балансу USDT — fallback на trade_usd {self.usd:g}$"); return self.usd
+        base, self.ladder, note = ladder_eval(balance, self.steps, self.ladder, self.dd_pct)
+        self._atomic_dump(self.f_ladder, self.ladder)
+        margin = round(base * self.margin_pct, 2)
+        notional = round(margin * self.lever, 2)
+        idx = self.ladder["step_idx"]
+        step = f"{self.steps[idx]:g}" if idx >= 0 else f"нижче {self.steps[0]:g} (база = баланс)"
+        self.log(f"{tag}: баланс {balance:,.2f} USDT, сходинка {step}, пік {self.ladder['peak_equity']:,.2f}"
+                 + (f", утримання до {self.ladder['recover_at']:,.2f}" if self.ladder.get("recover_at") else "")
+                 + f" | маржа {margin:g}$ x{self.lever} = {notional:g}$" + (f" | {note}" if note else ""))
+        return notional
 
     @staticmethod
     def _load(f, d):
@@ -134,8 +218,10 @@ class Trader:
         short = dirn == "SHORT"
         ref_px = bid_px if short else ask_px
         ctval, lot, minsz, tick = float(i["ctVal"]), i["lotSz"], float(i["minSz"]), i["tickSz"]
-        sz = _round(self.usd / (ctval * ref_px), lot)
-        if sz < minsz: self.log(f"{tag}: {self.usd:g}$ менше мін. лоту ({minsz} конт.) — пропуск"); return
+        notional = self._position_size(tag)
+        sz = _round(notional / (ctval * ref_px), lot)
+        if sz < minsz:
+            self.log(f"{tag}: {notional:g}$ менше мін. лоту ({minsz} конт. = {minsz * ctval * ref_px:,.2f}$) — пропуск"); return
 
         actual_usd = round(sz * ctval * ref_px, 2)
         tp = _round(ref_px * (1 - self.target / 100) if short else ref_px * (1 + self.target / 100), tick)

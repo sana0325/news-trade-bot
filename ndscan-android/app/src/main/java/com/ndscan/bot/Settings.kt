@@ -18,6 +18,8 @@ val ENV_FIELDS = listOf(
     "POLL_SEC" to "4",
 )
 
+const val DEFAULT_LADDER = "100, 140, 200, 280, 400, 560, 800, 1100"
+
 val SIGNAL_TYPES = listOf("CEX_IN", "CEX_OUT", "FRESH_BUY", "WATCH_OUT")
 
 /** Файли з assets/seed, які копіюються у filesDir при першому запуску (стан з ПК). */
@@ -94,6 +96,13 @@ object Settings {
             .put("max_pos", p.getString("okx_max_pos", "3")!!.toIntOrNull() ?: 3)
             .put("max_spread_pct", p.getString("okx_max_spread", "1.0")!!.toDoubleOrNull() ?: 1.0)
             .put("types", types)
+            .put("auto_ladder", p.getBoolean("okx_auto_ladder", true))
+            .put("margin_pct", p.getString("okx_margin_pct", "0.45")!!.toDoubleOrNull() ?: 0.45)
+            .put("ladder_steps", JSONArray().apply {
+                val steps = p.getString("okx_ladder_steps", DEFAULT_LADDER)!!.split(',', ' ', ';').mapNotNull { it.trim().toDoubleOrNull() }
+                (steps.ifEmpty { DEFAULT_LADDER.split(',').map { it.trim().toDouble() } }).forEach { put(it) }
+            })
+            .put("step_down_dd_pct", p.getString("okx_step_down_dd", "20")!!.toDoubleOrNull() ?: 20.0)
             .toString(1))
     }
 }

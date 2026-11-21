@@ -337,7 +337,15 @@ fun SettingsScreen() {
             if (demo) { flags["okx_demo"] = true; saved = false } else confirmReal = true
         }
         if (!flag("okx_demo", true)) Text("⚠️ РЕАЛ: угоди відкриватимуться на справжні гроші", color = Red, fontWeight = FontWeight.Bold)
-        Field("okx_trade_usd", "Розмір угоди, $", "50", number = true)
+        ToggleRow("okx_auto_ladder", "Розгін «драбинкою» (маржа від балансу)", true)
+        if (flag("okx_auto_ladder", true)) {
+            Field("okx_margin_pct", "Частка бази на угоду (0.45 = 45%)", "0.45", number = true)
+            Field("okx_ladder_steps", "Сходинки балансу, $", DEFAULT_LADDER)
+            Field("okx_step_down_dd", "Відкат при просадці, %", "20", number = true)
+            Text("Маржа = сходинка × частка, обсяг = маржа × плече. Якщо баланс недоступний — розмір угоди нижче.",
+                color = Color.Gray, fontSize = 12.sp)
+        }
+        Field("okx_trade_usd", if (flag("okx_auto_ladder", true)) "Розмір угоди, $ (запасний)" else "Розмір угоди, $", "50", number = true)
         Field("okx_lever", "Плече", "3", number = true)
         Field("okx_max_pos", "Макс. одночасних позицій", "3", number = true)
         Field("okx_max_spread", "Макс. спред, %", "1.0", number = true)
