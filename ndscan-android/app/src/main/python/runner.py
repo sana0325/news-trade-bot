@@ -1,6 +1,6 @@
 """
 Обгортка для Android: запускає ndscan.scan() у потоці сервісу, перезапускає після падіння,
-шле heartbeat у Telegram і віддає стан для сповіщення. Торгова логіка — лише в ndscan / okx_trader.
+шле heartbeat у Telegram і віддає стан для сповіщення. Торгова логіка — лише в ndscan / bingx_trader.
 """
 import contextlib, csv, importlib, io, json, os, sys, threading, time, traceback
 from datetime import datetime, timezone
@@ -123,7 +123,7 @@ def _heartbeat_loop():
             continue
         last = time.time()
         m = _mod
-        trades = f"відкритих угод: {len(m.TRADER.trades)}" if m.TRADER else f"OKX вимкнено, відкритих сигналів: {len(m.OPEN)}"
+        trades = f"відкритих угод: {len(m.TRADER.trades)}" if m.TRADER else f"BingX вимкнено, відкритих сигналів: {len(m.OPEN)}"
         _tg(m, f"💚 живий, блок {m.STATUS.get('block')}, сигналів за 6г: {_signals_since(m, HEARTBEAT_SEC)}, {trades}")
 
 

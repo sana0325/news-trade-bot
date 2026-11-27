@@ -49,8 +49,8 @@ object Settings {
 
     fun okxMode(ctx: Context): String {
         val p = secure(ctx)
-        if (p.getString("okx_key", "").isNullOrBlank() || !p.getBoolean("okx_enabled", false)) return "вимкнено"
-        return if (p.getBoolean("okx_demo", true)) "ДЕМО" else "РЕАЛ"
+        if (p.getString("bx_key", "").isNullOrBlank() || !p.getBoolean("bx_enabled", false)) return "вимкнено"
+        return if (p.getBoolean("bx_demo", true)) "ДЕМО" else "РЕАЛ"
     }
 
     fun envJson(ctx: Context): String {
@@ -70,7 +70,7 @@ object Settings {
         ctx.assets.open("seed/cex_wallets.json").use { i -> File(dir, "cex_wallets.json").outputStream().use { i.copyTo(it) } }
     }
 
-    /** tg.json і okx_keys.json у filesDir — безпосередньо перед стартом Python. */
+    /** tg.json і bingx_keys.json у filesDir — безпосередньо перед стартом Python. */
     fun writeBotFiles(ctx: Context) {
         val p = secure(ctx)
         val dir = ctx.filesDir
@@ -80,29 +80,29 @@ object Settings {
         if (token.isNotEmpty() && chat.isNotEmpty()) tg.writeText(JSONObject().put("token", token).put("chat", chat).toString())
         else tg.delete()
 
-        val okx = File(dir, "okx_keys.json")
-        val key = p.getString("okx_key", "")!!.trim()
+        File(dir, "okx_keys.json").delete()   // від старої версії на OKX
+        val okx = File(dir, "bingx_keys.json")
+        val key = p.getString("bx_key", "")!!.trim()
         if (key.isEmpty()) { okx.delete(); return }
         val types = JSONArray()
-        SIGNAL_TYPES.filter { p.getBoolean("okx_type_$it", true) }.forEach { types.put(it) }
+        SIGNAL_TYPES.filter { p.getBoolean("bx_type_$it", true) }.forEach { types.put(it) }
         okx.writeText(JSONObject()
             .put("key", key)
-            .put("secret", p.getString("okx_secret", "")!!.trim())
-            .put("passphrase", p.getString("okx_pass", "")!!.trim())
-            .put("demo", p.getBoolean("okx_demo", true))
-            .put("enabled", p.getBoolean("okx_enabled", false))
-            .put("trade_usd", p.getString("okx_trade_usd", "50")!!.toDoubleOrNull() ?: 50.0)
-            .put("lever", p.getString("okx_lever", "3")!!.toIntOrNull() ?: 3)
-            .put("max_pos", p.getString("okx_max_pos", "3")!!.toIntOrNull() ?: 3)
-            .put("max_spread_pct", p.getString("okx_max_spread", "1.0")!!.toDoubleOrNull() ?: 1.0)
+            .put("secret", p.getString("bx_secret", "")!!.trim())
+            .put("demo", p.getBoolean("bx_demo", true))
+            .put("enabled", p.getBoolean("bx_enabled", false))
+            .put("trade_usd", p.getString("bx_trade_usd", "50")!!.toDoubleOrNull() ?: 50.0)
+            .put("lever", p.getString("bx_lever", "3")!!.toIntOrNull() ?: 3)
+            .put("max_pos", p.getString("bx_max_pos", "3")!!.toIntOrNull() ?: 3)
+            .put("max_spread_pct", p.getString("bx_max_spread", "1.0")!!.toDoubleOrNull() ?: 1.0)
             .put("types", types)
-            .put("auto_ladder", p.getBoolean("okx_auto_ladder", true))
-            .put("margin_pct", p.getString("okx_margin_pct", "0.45")!!.toDoubleOrNull() ?: 0.45)
+            .put("auto_ladder", p.getBoolean("bx_auto_ladder", true))
+            .put("margin_pct", p.getString("bx_margin_pct", "0.45")!!.toDoubleOrNull() ?: 0.45)
             .put("ladder_steps", JSONArray().apply {
-                val steps = p.getString("okx_ladder_steps", DEFAULT_LADDER)!!.split(',', ' ', ';').mapNotNull { it.trim().toDoubleOrNull() }
+                val steps = p.getString("bx_ladder_steps", DEFAULT_LADDER)!!.split(',', ' ', ';').mapNotNull { it.trim().toDoubleOrNull() }
                 (steps.ifEmpty { DEFAULT_LADDER.split(',').map { it.trim().toDouble() } }).forEach { put(it) }
             })
-            .put("step_down_dd_pct", p.getString("okx_step_down_dd", "20")!!.toDoubleOrNull() ?: 20.0)
+            .put("step_down_dd_pct", p.getString("bx_step_down_dd", "20")!!.toDoubleOrNull() ?: 20.0)
             .toString(1))
     }
 }

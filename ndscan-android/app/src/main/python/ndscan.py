@@ -11,7 +11,7 @@ ndscan v2.2 — ончейн-сканер BSC для монет з ф'ючерс
   MINT        (INFO)  великий мінт токенів (без оцінки результату)
 
 Кожен LONG/SHORT сигнал оцінюється на ф'ючерсах: LONG — +TARGET% раніше за -STOP%,
-SHORT — дзеркально. Тільки сигнали, без торгівлі (або автоторгівля через okx_trader.py).
+SHORT — дзеркально. Тільки сигнали, без торгівлі (або автоторгівля через bingx_trader.py).
 
     pip install requests
     python ndscan.py            # сканер
@@ -338,13 +338,14 @@ def watch(wallet, reason, t):
 ICON = {"FRESH_BUY": "👀", "CEX_OUT": "🏦", "CEX_IN": "📤", "WATCH_OUT": "🚨", "MINT": "🪙"}
 OKX_SYMS = None
 def load_okx_syms():
-    """Монети з USDT-ф'ючерсами на реальному OKX (публічний API, ключ не потрібен)."""
+    """Монети з USDT-ф'ючерсами на BingX (публічний API, ключ не потрібен)."""
     global OKX_SYMS
     try:
-        d = get("https://www.okx.com/api/v5/public/instruments", instType="SWAP")["data"]
-        OKX_SYMS = {i["instId"].split("-")[0] for i in d if i["instId"].endswith("-USDT-SWAP") and i.get("state") == "live"}
-        log(f"OKX: {len(OKX_SYMS)} USDT-ф'ючерсів")
-    except Exception as e: log("OKX список монет недоступний:", e)
+        d = get("https://open-api.bingx.com/openApi/swap/v2/quote/contracts")["data"]
+        bases = {c["symbol"].split("-")[0] for c in d if c.get("symbol", "").endswith("-USDT")}
+        OKX_SYMS = bases | {b.lstrip("0123456789") for b in bases}
+        log(f"BingX: {len(bases)} USDT-ф'ючерсів")
+    except Exception as e: log("BingX список монет недоступний:", e)
 
 def fp(x, ref):
     """Ціна з 4 значущими цифрами."""
@@ -359,7 +360,7 @@ def signal_text(typ, t, dirn, level, usd, pct, note, wallets, tot, ctx, txh, wal
         short = dirn == "SHORT"
         tp = px * (1 - TARGET_PCT / 100) if short else px * (1 + TARGET_PCT / 100)
         sl = px * (1 + STOP_PCT / 100) if short else px * (1 - STOP_PCT / 100)
-        okx = "" if OKX_SYMS is None else ("OKX: ✅ є" if t["symbol"] in OKX_SYMS else "OKX: ❌ немає")
+        okx = "" if OKX_SYMS is None else ("BingX: ✅ є" if t["symbol"] in OKX_SYMS else "BingX: ❌ немає")
         rep = (f"🔁 ПОВТОР — по цій події вже був сигнал о "
                f"{datetime.fromtimestamp(EVENTS.get(k, ts)).strftime('%H:%M')}, угоду не дублюємо\n") if is_repeat else ""
         trade = (f"{'🔴 ШОРТ' if short else '🟢 ЛОНГ'} {t['fut']}  {okx}\n" + rep +
@@ -421,7 +422,7 @@ def signal(typ, t, wallet, usd, pct, txh, counterparty="", note=""):
         OPEN.append({"id": sid, "fut": t["fut"], "ts": ts, "px": ctx["fut_px"], "dir": dirn, "row": row})
         if TRADER:
             try: TRADER.on_signal(typ, t["symbol"], dirn, sid)
-            except Exception as e: log(f"OKX помилка угоди {t['symbol']}: {e}")
+            except Exception as e: log(f"BingX помилка угоди {t['symbol']}: {e}")
 
     msg = signal_text(typ, t, dirn, level, usd, pct, note, wallets, tot, ctx, txh, wallet, ts, is_repeat)
     log(msg.replace("\n", " | ")); tg(msg)
@@ -598,14 +599,14 @@ def fetch_transfers(frm, to, token_addrs):
 TRADER = None
 def init_trader():
     global TRADER
-    f = P("okx_keys.json")
-    if not os.path.exists(f): log("okx_keys.json немає — тільки сигнали, без угод"); return
+    f = P("bingx_keys.json")
+    if not os.path.exists(f): log("bingx_keys.json немає — тільки сигнали, без угод"); return
     try:
-        from okx_trader import Trader
+        from bingx_trader import Trader
         TRADER = Trader(f, DIR, log, WINDOW_H, EVAL_H, TARGET_PCT, STOP_PCT)
         if not TRADER.enabled: TRADER = None
     except Exception as e:
-        log(f"OKX не підключено: {e} — працюю тільки на сигнали"); TRADER = None
+        log(f"BingX не підключено: {e} — працюю тільки на сигнали"); TRADER = None
 
 def scan():
     init_trader(); load_okx_syms()
@@ -651,7 +652,7 @@ def scan():
                 track_outcomes(); t_track = time.time(); save_state(last)
                 if TRADER:
                     try: TRADER.housekeep()
-                    except Exception as e: log(f"OKX housekeep: {e}")
+                    except Exception as e: log(f"BingX housekeep: {e}")
             if time.time() - load_json(F_UNIVERSE, {"ts": 0})["ts"] > 24 * 3600:
                 pools = build_universe(); toks = tokens_of(pools); refresh_prices(pools)
                 token_addrs = list(toks)

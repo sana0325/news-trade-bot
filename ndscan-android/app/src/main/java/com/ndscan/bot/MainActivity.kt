@@ -136,7 +136,7 @@ fun HomeScreen() {
             Row2("У слежці", s.watch.toString())
             Row2("Депозитів", s.deposits.toString())
             Row2("Сигналів за 6г", s.signals6h.toString())
-            Row2("OKX", Settings.okxMode(ctx) + if (s.trades > 0) " · угод ${s.trades}" else "")
+            Row2("BingX", Settings.okxMode(ctx) + if (s.trades > 0) " · угод ${s.trades}" else "")
         } }
 
         Card { Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -328,29 +328,28 @@ fun SettingsScreen() {
         Field("tg_token", "Токен бота", secret = true)
         Field("tg_chat", "Chat ID")
 
-        Section("OKX")
-        Field("okx_key", "API key", secret = true)
-        Field("okx_secret", "Secret", secret = true)
-        Field("okx_pass", "Passphrase", secret = true)
-        ToggleRow("okx_enabled", "Автоторгівля увімкнена", false)
-        ToggleRow("okx_demo", "Демо-рахунок", true) { demo ->
-            if (demo) { flags["okx_demo"] = true; saved = false } else confirmReal = true
+        Section("BingX")
+        Field("bx_key", "API key", secret = true)
+        Field("bx_secret", "Secret", secret = true)
+        ToggleRow("bx_enabled", "Автоторгівля увімкнена", false)
+        ToggleRow("bx_demo", "Демо-рахунок (VST)", true) { demo ->
+            if (demo) { flags["bx_demo"] = true; saved = false } else confirmReal = true
         }
-        if (!flag("okx_demo", true)) Text("⚠️ РЕАЛ: угоди відкриватимуться на справжні гроші", color = Red, fontWeight = FontWeight.Bold)
-        ToggleRow("okx_auto_ladder", "Розгін «драбинкою» (маржа від балансу)", true)
-        if (flag("okx_auto_ladder", true)) {
-            Field("okx_margin_pct", "Частка бази на угоду (0.45 = 45%)", "0.45", number = true)
-            Field("okx_ladder_steps", "Сходинки балансу, $", DEFAULT_LADDER)
-            Field("okx_step_down_dd", "Відкат при просадці, %", "20", number = true)
+        if (!flag("bx_demo", true)) Text("⚠️ РЕАЛ: угоди відкриватимуться на справжні гроші", color = Red, fontWeight = FontWeight.Bold)
+        ToggleRow("bx_auto_ladder", "Розгін «драбинкою» (маржа від балансу)", true)
+        if (flag("bx_auto_ladder", true)) {
+            Field("bx_margin_pct", "Частка бази на угоду (0.45 = 45%)", "0.45", number = true)
+            Field("bx_ladder_steps", "Сходинки балансу, $", DEFAULT_LADDER)
+            Field("bx_step_down_dd", "Відкат при просадці, %", "20", number = true)
             Text("Маржа = сходинка × частка, обсяг = маржа × плече. Якщо баланс недоступний — розмір угоди нижче.",
                 color = Color.Gray, fontSize = 12.sp)
         }
-        Field("okx_trade_usd", if (flag("okx_auto_ladder", true)) "Розмір угоди, $ (запасний)" else "Розмір угоди, $", "50", number = true)
-        Field("okx_lever", "Плече", "3", number = true)
-        Field("okx_max_pos", "Макс. одночасних позицій", "3", number = true)
-        Field("okx_max_spread", "Макс. спред, %", "1.0", number = true)
+        Field("bx_trade_usd", if (flag("bx_auto_ladder", true)) "Розмір угоди, $ (запасний)" else "Розмір угоди, $", "50", number = true)
+        Field("bx_lever", "Плече", "3", number = true)
+        Field("bx_max_pos", "Макс. одночасних позицій", "3", number = true)
+        Field("bx_max_spread", "Макс. спред, %", "1.0", number = true)
         Text("Які сигнали торгувати:")
-        SIGNAL_TYPES.forEach { ToggleRow("okx_type_$it", it, true) }
+        SIGNAL_TYPES.forEach { ToggleRow("bx_type_$it", it, true) }
 
         Section("Сканер (змінні оточення ndscan)")
         ENV_FIELDS.forEach { (k, def) -> Field("env_$k", k, def, number = true) }
@@ -371,8 +370,8 @@ fun SettingsScreen() {
     if (confirmReal) AlertDialog(
         onDismissRequest = { confirmReal = false },
         title = { Text("Перейти на РЕАЛ-рахунок?") },
-        text = { Text("Бот відкриватиме угоди на справжні гроші на OKX. Ви впевнені?") },
-        confirmButton = { TextButton(onClick = { flags["okx_demo"] = false; saved = false; confirmReal = false }) { Text("Так, РЕАЛ", color = Red) } },
+        text = { Text("Бот відкриватиме угоди на справжні гроші на BingX. Ви впевнені?") },
+        confirmButton = { TextButton(onClick = { flags["bx_demo"] = false; saved = false; confirmReal = false }) { Text("Так, РЕАЛ", color = Red) } },
         dismissButton = { TextButton(onClick = { confirmReal = false }) { Text("Скасувати") } },
     )
 }
